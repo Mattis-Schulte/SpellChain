@@ -61,7 +61,6 @@ class Game:
     def play(self) -> None:
         """
         Starts and manages the main game loop.
-
         Handles player input, sequence updates, word validation, scoring, and round transitions.
         """
         os.system('cls||clear')
@@ -81,7 +80,7 @@ class Game:
             
             self.sequence += char
             os.system('cls||clear')
-            print(f"{Colors.BLUE}Player {self.player} added \"{char}\" -> Sequence: \"{self.sequence}\" (Round {self.round_count}){Colors.RESET}")
+            print(f"{Colors.BLUE}Player {self.player} added \"{char}\" -> Sequence: \"{self.sequence}\"{Colors.RESET}")
             
             if self.dictionary.search_word(self.sequence):
                 if not self.is_word_used(self.sequence): 
