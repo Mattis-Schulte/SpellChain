@@ -31,7 +31,7 @@ class DictionaryTrie:
         """
         node = self.root
         for char in word:
-            node = node.children.setdefault(char, TrieNode())
+            node = node.children.get(char) or node.children.setdefault(char, TrieNode())
         if node.is_word:
             node.definition += f" {Colors.YELLOW}OR{Colors.RESET} {definition}"
         else:
