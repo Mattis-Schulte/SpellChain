@@ -11,6 +11,8 @@ from shared_utils import get_player_count_input, get_input_character, display_st
 class SpellChainGame:
     """
     Manages the local gameplay of SpellChain, handling player turns, scoring, and game state.
+    
+    :param dictionary_file: Path to the dictionary file.
     """
     def __init__(self, dictionary_file: str = os.path.join(os.path.dirname(__file__), "oxford_english_dictionary.txt")):
         """
@@ -25,7 +27,8 @@ class SpellChainGame:
         self.round_count = 1
         self.found_words = defaultdict(set)
         self.current_player = 1
-        self.player_count = 0
+        self.player_count = get_player_count_input()
+        print_welcome_message(end="")
 
     def switch_player(self):
         """
@@ -82,9 +85,6 @@ class SpellChainGame:
         """
         Initiates and manages a local game session.
         """
-        self.player_count = get_player_count_input()
-        print_welcome_message(end="")
-
         while True:
             display_status(self.sequence, self.scores, self.player_count, self.round_count)
             char = get_input_character(self.current_player)
