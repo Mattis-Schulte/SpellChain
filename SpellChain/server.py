@@ -224,6 +224,7 @@ class SpellChainServer:
         player_number = None
 
         try:
+            client_socket.settimeout(1800)
             with client_socket, client_socket.makefile('r') as client_file:
                 for line in client_file:
                     if len(line) > MAX_MESSAGE_SIZE:
