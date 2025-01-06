@@ -35,19 +35,19 @@ class OnlineGameClient:
         Connects to the server to create or join a game room.
 
         :param action: The action to take ('create' or 'join').
-        :param player_count: Number of players if creating a room (optional).
-        :param room_id: Room ID if joining a room (optional).
+        :param player_count: Number of players if creating a room.
+        :param room_id: Room ID if joining a room.
         """
         try:
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.socket.connect((self.server_host, self.server_port))
 
-            if action == "create":
+            if action == "create" and player_count:
                 self.create_room(player_count)
-            elif action == "join":
+            elif action == "join" and room_id:
                 self.join_room(room_id)
             else:
-                raise ValueError("Action must be 'create' or 'join'.")
+                raise ValueError("Action must be 'create' or 'join' with valid player count or room ID.")
 
             self.listener_thread = threading.Thread(target=self.listen_to_server, daemon=True)
             self.listener_thread.start()

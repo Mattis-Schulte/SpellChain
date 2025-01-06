@@ -115,6 +115,8 @@ class LocalGameClient:
     def play_local_game(self, dictionary_file: str = os.path.join(os.path.dirname(__file__), "oxford_english_dictionary.txt")):
         """
         Initiates and manages a local game session.
+
+        :param dictionary_file: Path to the dictionary file.
         """
         dictionary_trie = DictionaryTrie()
         dictionary_trie.load_dictionary(dictionary_file)
