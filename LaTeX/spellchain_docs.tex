@@ -18,23 +18,23 @@
 \maketitle
 
 \section*{Introduction and Objective}
-\textit{SpellChain} is a fun and educational two-player word-building game. Players take turns adding letters to form valid English words while trying to avoid creating invalid prefixes. The objective of the game is to build longer words, which earn more points. Players can choose to either work together or compete against each other to achieve this. \textit{SpellChain} not only encourages strategic thinking but also helps enhance vocabulary skills in an enjoyable and potentially competitive setting. The game uses a subset from the Oxford English Dictionary, which can be accessed \href{https://raw.githubusercontent.com/sujithps/Dictionary/master/Oxford%20English%20Dictionary.txt}{\textcolor{links}{here}}, providing a vast and challenging collection of words.
+\textit{SpellChain} is a fun and educational word-building game for 2 to 4 players. Players take turns adding letters to form valid English words while trying to avoid creating invalid prefixes. The objective of the game is to build longer words, which earn more points. Players can choose to either work together or compete against each other to achieve this. \textit{SpellChain} not only encourages strategic thinking but also helps enhance vocabulary skills in an enjoyable and potentially competitive setting. The game uses a subset from the Oxford English Dictionary, which can be accessed \href{https://raw.githubusercontent.com/sujithps/Dictionary/master/Oxford%20English%20Dictionary.txt}{\textcolor{links}{here}}, providing a vast and challenging collection of words. Additionally, the game supports online play, allowing players to compete remotely.
 
 \section*{Basic Rules and Scoring}
 The rules of \textit{SpellChain} are designed to keep the game fair while also encouraging a competitive atmosphere. These rules consist of the following key elements:
 \begin{enumerate}
-    \item \textbf{Taking Turns:} Players alternate turns. On each turn, a player adds either a single letter, a space, or a punctuation mark (\textit{"-"}, \textit{"'"}, \textit{"/"}, \textit{"."}) to the existing sequence of characters.
+    \item \textbf{Taking Turns:} Players take turns in a predefined order. On each turn, a player adds either a single letter, a space, or a punctuation mark (\textit{"-"}, \textit{"'"}, \textit{"/"}, \textit{"."}) to the existing sequence of characters.
     \item \textbf{Valid Prefix:} After each addition, the sequence must remain a valid prefix of at least one word in the dictionary. For example, if the sequence is \textit{"car"}, adding a \textit{"t"} is valid because "cart" is a word.
     \item \textbf{Scoring Points:} When a player completes a valid word, they earn points based on the word's length. The scoring formula is:
     \[
         \text{Points Earned} = \left\lfloor \frac{\text{Word Length} + 1}{2} \right\rfloor
     \]
     For instance, completing the word \textit{"python"} (six letters) would earn the player three points.
-    \item \textbf{Preventing Word Reuse:} After a word has been successfully completed and points have been awarded to a player, it cannot be used again by either player during the game. This rule encourages players to be inventive and strategic in their word choices.
-    \item \textbf{Handling Invalid Sequences:} If a player adds a letter or punctuation mark that doesn't match any prefix in the dictionary, the sequence resets, a new round starts, and the turn passes to the other player. For example, if the sequence becomes \textit{"zz"}, which isn't the start of any English word, the sequence resets.
+    \item \textbf{Preventing Word Reuse:} After a word has been successfully completed and points have been awarded to a player, it cannot be used again by any player during the game. This rule encourages players to be inventive and strategic in their word choices.
+    \item \textbf{Handling Invalid Sequences:} If a player adds a letter or punctuation mark that doesn't match any prefix in the dictionary, the sequence resets, a new round starts, and the turn passes to the next player. For example, if the sequence becomes \textit{"zz"}, which isn't the start of any English word, the sequence resets.
     \item \textbf{Exiting the Game:} At any point during the game, a player can type \textit{"exit"} to end the game. This feature provides flexibility, allowing players to conclude the game whenever they choose.
 \end{enumerate}
-After each move, the game will display the current sequence, both players' scores, and the current round to keep everyone updated on the game's progress.
+After each move, the game will display the current sequence, all players' scores, and the current round to keep everyone updated on the game's progress.
 
 \section*{Winning Conditions}
 The game does not enforce a predefined win condition, allowing players to play indefinitely or set custom rules such as a target score, maximum rounds, or a time limit. At the end of the game, triggered by the \textit{"exit"} command, a detailed summary is displayed. This summary includes each player's total score, the number of rounds, and the words they successfully completed, providing a clear overview of the game's outcome.
@@ -42,7 +42,8 @@ The game does not enforce a predefined win condition, allowing players to play i
 \section*{Implementation Highlights}
 \textit{SpellChain} is built using Python and incorporates several key features that ensure a smooth and enjoyable playing experience, these include:
 \begin{enumerate}
-    \item \textbf{Trie Data Structure:} \textit{SpellChain} leverages a trie, a specialized tree-like data structure, to efficiently store and manage the dictionary words. In this trie, each node represents a single character, and paths through the tree form complete words or prefixes. This hierarchical organization allows for fast retrieval and insertion operations, enabling the game to quickly determine if a new sequence added by a player forms a valid prefix or completes a recognized word. The efficiency of the trie is crucial for keeping the game fast and responsive, especially when dealing with a large dataset like the Oxford English Dictionary.
-    \item \textbf{Interactive Console Interface:} The game offers a simplistic console interface with clear prompts and color-coded feedback. This design makes it easy for players to track the game's progress and see their standings. It enhances the overall user experience by ensuring players can easily engage with the game and stay updated on what's happening.
+    \item \textbf{Trie Data Structure:} \textit{SpellChain} uses a trie, an efficient tree-like data structure, to manage dictionary words. Each node in the trie represents a character, with paths forming words or prefixes. This arrangement allows rapid retrieval and insertion, crucial for quick validation of sequences as prefixes or complete words, ensuring responsiveness, especially with extensive datasets like the Oxford English Dictionary.
+    \item \textbf{Interactive Console Interface:} The game  features an interactive console interface that presents users with clear prompts and color-coded feedback, making it easy to track game progress and player standings throughout the gameplay.
+    \item \textbf{Online Multiplayer Support:} Supporting 2 to 4 players, \textit{SpellChain} employs a server-based architecture utilizing TCP sockets. This facilitates reliable communication between players and ensures a smooth online multiplayer experience.
 \end{enumerate}
 \end{document}
