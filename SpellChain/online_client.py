@@ -23,7 +23,6 @@ class OnlineGameClient:
         self.player_count = None
         self.listener_thread = None
         self.stop_listener = False
-        self.game_in_progress = False
         self.game_start_event = threading.Event()
         self.sequence = ""
         self.scores = {}
@@ -58,7 +57,7 @@ class OnlineGameClient:
             except (EOFError, KeyboardInterrupt):
                 self.exit_game()
 
-            if self.game_in_progress:
+            if self.game_start_event.is_set():
                 self.game_loop()
 
             self.listener_thread.join()
@@ -113,7 +112,6 @@ class OnlineGameClient:
             self.room_id, self.player_number, self.player_count = message["room_id"], message["player_number"], message["player_count"]
             safe_print(f"{Colors.GREEN}{'Created' if msg_type == 'room_created' else 'Joined'} Room {self.room_id} as Player {self.player_number}, waiting for other players ...{Colors.RESET}")
         elif msg_type == "game_start":
-            self.game_in_progress = True
             clear_screen()
             safe_print(f"{Colors.CYAN}Game started in Room {self.room_id}! You are Player {self.player_number}.{Colors.RESET}")
             self.display_game_status(message)
@@ -143,7 +141,7 @@ class OnlineGameClient:
         Manages the game loop for live game updates.
         """
         try:
-            while self.game_in_progress and not self.stop_listener:
+            while self.game_start_event.is_set():
                 if self.player_number == self.current_player:
                     char = self.get_input_character()
                     if char == "exit":
@@ -260,7 +258,7 @@ class OnlineGameClient:
         """
         Handles termination, closing connections and resetting state.
         """
-        self.game_in_progress = False
+        self.game_start_event.clear()
         self.stop_listener = True
         self.socket.close()
         os._exit(0)
