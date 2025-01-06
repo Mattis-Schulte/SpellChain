@@ -1,4 +1,4 @@
-import os, sys
+import os
 from collections import defaultdict
 
 from colors import Colors

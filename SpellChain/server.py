@@ -364,7 +364,7 @@ class SpellChainServer:
             self.send_error(client_socket, "You are not part of any room.")
             return
 
-        char = message.get("char")
+        char = message.get("char").lower()
         ALLOWED_PUNCTUATIONS  = set("-'/ .")
         if not isinstance(char, str) or len(char) != 1 or not (char.isalpha() or char in ALLOWED_PUNCTUATIONS):
             self.send_error(client_socket, "Invalid character input.")

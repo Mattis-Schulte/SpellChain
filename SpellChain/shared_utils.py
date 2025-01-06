@@ -1,3 +1,5 @@
+import sys
+
 from colors import Colors
 from utils import input_with_prompt, safe_print, print_welcome_message
 
@@ -27,9 +29,7 @@ def get_input_character(player: int) -> str:
     """
     ALLOWED_PUNCTUATIONS = set("-'/ .")
     while True:
-        inp = input_with_prompt(
-            f"{Colors.MAGENTA}Player {player}, enter a character (or \"exit\"): {Colors.RESET}"
-        ).strip().lower()
+        inp = input_with_prompt(f"{Colors.MAGENTA}Player {player}, enter a character (or \"exit\"): {Colors.RESET}").lower()
         if inp == "exit" or (len(inp) == 1 and (inp.isalpha() or inp in ALLOWED_PUNCTUATIONS)):
             return inp
         safe_print(f"{Colors.RED}Invalid input. Please enter a single alphabetic or punctuation character.{Colors.RESET}")
