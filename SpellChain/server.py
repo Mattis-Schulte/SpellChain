@@ -84,9 +84,6 @@ class GameRoom:
         :param char: The character added by the player.
         """
         with self.lock:
-            if player_number != self.current_player:
-                return self.create_error("Not your turn.")
-
             self.sequence += char
             messages = []
 
@@ -241,6 +238,8 @@ class SpellChainServer:
                     response = self.handle_message(message, client_socket, room, player_number)
                     if isinstance(response, tuple):
                         room, player_number = response
+                    if not room or not self.rooms.get(room.room_id):
+                        break
         except (ConnectionResetError, BrokenPipeError):
             logging.warning("Client disconnected unexpectedly.")
             if room and player_number:
@@ -261,6 +260,11 @@ class SpellChainServer:
         :return: The (room, player_number) tuple if they are modified, else None.
         """
         msg_type = message.get("type")
+
+        if player_number and msg_type in ("create_room", "join_room"):
+            self.send_error(client_socket, "You are already in a room.")
+            return
+
         handlers = {
             "create_room": self.create_room,
             "join_room": self.join_room,
@@ -268,10 +272,8 @@ class SpellChainServer:
             "exit": self.exit_game
         }
 
-        if handler := handlers.get(msg_type):
-            return handler(message, client_socket, room, player_number)
-        else:
-            self.send_error(client_socket, "Unknown message type.")
+        handler = handlers.get(msg_type, lambda *_: self.send_error(client_socket, "Unknown message type."))
+        return handler(message, client_socket, room, player_number)
 
     def create_room(self, message: dict, client_socket: socket.socket, room: GameRoom, player_number: int) -> tuple[GameRoom, int] | None:
         """
@@ -360,8 +362,8 @@ class SpellChainServer:
         :param room: The current game room.
         :param player_number: The player's number in the room.
         """
-        if not room or not player_number:
-            self.send_error(client_socket, "You are not part of any room.")
+        if (not room or player_number != room.current_player or len(room.clients) < room.player_count):
+            self.send_error(client_socket, "Invalid action. Please check your room and player status.")
             return
 
         char = message.get("char").lower()
