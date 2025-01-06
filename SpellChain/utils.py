@@ -28,9 +28,11 @@ def safe_print(*args, **kwargs):
     with print_lock:
         print(*args, **kwargs)
 
-def print_welcome_message():
+def print_welcome_message(end: str = "\n"):
     """
     Clears the screen and prints the welcome message.
+
+    :param end: The end character for the print statement.
     """
     clear_screen()
     safe_print(
@@ -38,5 +40,5 @@ def print_welcome_message():
         "Players take turns adding one letter to form a word.\n"
         "Completing a valid word awards points based on its length, and the word's definition is displayed.\n"
         "Once a word has been used by any player, it cannot be reused in subsequent turns.\n"
-        "The game continues until a player types \"exit\" or presses Ctrl+C.\n"
+        "The game continues until a player types \"exit\" or presses Ctrl+C.\n", end=end
     )

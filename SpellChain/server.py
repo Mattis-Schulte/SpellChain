@@ -68,7 +68,7 @@ class GameRoom:
         }
         self.broadcast(initial_message)
 
-    def get_next_player(self) -> int:
+    def switch_player(self) -> int:
         """
         Determines the next player's turn.
 
@@ -115,7 +115,7 @@ class GameRoom:
                 self.sequence = ""
                 self.round_count += 1
 
-            self.current_player_index = self.get_next_player()
+            self.current_player_index = self.switch_player()
             response = {
                 "type": "game_update",
                 "player": player_number,

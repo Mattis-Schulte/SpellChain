@@ -2,6 +2,7 @@ import json, os, socket, sys, threading
 
 from colors import Colors
 from utils import clear_screen, input_with_prompt, safe_print, print_welcome_message
+from shared_utils import get_player_count_input, get_input_character, display_status, end_game_screen
 
 
 class OnlineGameClient:
@@ -81,7 +82,7 @@ class OnlineGameClient:
         """
         self.send_message({"type": "join_room", "room_id": room_id})
 
-    def listen_to_server(self) -> None:
+    def listen_to_server(self):
         """
         Listens for messages from the server and handles them.
         """
@@ -101,7 +102,7 @@ class OnlineGameClient:
                 safe_print(f"{Colors.RED}{e}{Colors.RESET}")
                 self.termination_handler()
 
-    def handle_server_message(self, message: dict) -> None:
+    def handle_server_message(self, message: dict):
         """
         Handles incoming messages from the server based on message type.
 
@@ -124,7 +125,7 @@ class OnlineGameClient:
             safe_print(f"{Colors.RED}{message.get('message')}{Colors.RESET}")
             self.termination_handler()
 
-    def send_message(self, message: dict) -> None:
+    def send_message(self, message: dict):
         """
         Sends a message to the server.
 
@@ -136,14 +137,14 @@ class OnlineGameClient:
             safe_print(f"{Colors.RED}{e}{Colors.RESET}")
             self.termination_handler()
 
-    def game_loop(self) -> None:
+    def game_loop(self):
         """
         Manages the game loop for live game updates.
         """
         try:
             while self.game_start_event.is_set():
                 if self.player_number == self.current_player:
-                    char = self.get_input_character()
+                    char = get_input_character(self.player_number)
                     if char == "exit":
                         self.exit_game()
                         break
@@ -151,24 +152,8 @@ class OnlineGameClient:
                     self.current_player = 0 # Prevents local input while waiting for server update
         except (EOFError, KeyboardInterrupt):
             self.exit_game()
-
-    def get_input_character(self) -> str:
-        """
-        Prompts the current player to input a character or exit the game.
-        Ensures that the input is a single alphabetic or allowed punctuation character.
-
-        :return: The validated input character or "exit".
-        """
-        ALLOWED_PUNCTUATIONS = set("-'/ .")
-        while True:
-            inp = input_with_prompt(
-                f"{Colors.MAGENTA}Player {self.player_number}, enter a character (or \"exit\"): {Colors.RESET}"
-            ).strip().lower()
-            if inp == "exit" or (len(inp) == 1 and (inp.isalpha() or inp in ALLOWED_PUNCTUATIONS)):
-                return inp
-            safe_print(f"{Colors.RED}Invalid input. Please enter a single alphabetic or punctuation character.{Colors.RESET}")
     
-    def display_game_status(self, message: dict) -> None:
+    def display_game_status(self, message: dict):
         """
         Displays the current game status based on server updates.
 
@@ -178,11 +163,11 @@ class OnlineGameClient:
         self.scores = message.get("scores", {})
         self.current_player = message.get("current_player", 1)
         self.round_count = message.get("round_count", 1)
-        self.print_status()
+        display_status(self.sequence, self.scores, self.player_count, self.round_count)
         if message.get("current_player", self.current_player) != self.player_number:
             safe_print(f"{Colors.CYAN}Waiting for Player {message.get('current_player', self.current_player)} ...{Colors.RESET}")
 
-    def display_game_update(self, message: dict) -> None:
+    def display_game_update(self, message: dict):
         """
         Displays updates to the game sequence and scores.
 
@@ -201,60 +186,30 @@ class OnlineGameClient:
         if messages:
             safe_print("\n" + "\n\n".join(messages))
 
-        self.print_status()
+        display_status(self.sequence, self.scores, self.player_count, self.round_count)
         if message.get("current_player", self.current_player) != self.player_number:
             safe_print(f"{Colors.CYAN}Waiting for Player {message.get('current_player', self.current_player)} ...{Colors.RESET}")
 
         self.current_player = message.get("current_player", self.current_player)
 
-    def print_status(self) -> None:
-        """
-        Prints the current sequence and score status.
-        """
-        sequence_line = f"{Colors.BLUE}Current sequence: \"{self.sequence}\"{Colors.RESET}"
-        score_display = " | ".join([f"Player {player}: {self.scores.get(str(player), 0)}" for player in range(1, self.player_count + 1)])
-        score_line = f"{Colors.GREEN}(Round {self.round_count}) Scores -> {score_display}{Colors.RESET}"
-
-        bar_length = max(len(sequence_line), len(score_line))
-        bar = f"{Colors.CYAN}{'=' * bar_length}{Colors.RESET}"
-
-        safe_print(f"\n{bar}\n{sequence_line}\n{score_line}\n{bar}\n")
-
-    def handle_game_ended(self, message: dict) -> None:
+    def handle_game_ended(self, message: dict):
         """
         Handles the end of the game, printing final results.
 
         :param message: The message with final game results.
         """
-        left_player = message.get("player_number")
-        reason = message.get("reason", "Unknown")
-        final_scores = message.get("scores", {})
-        final_found_words = message.get("found_words", {})
-
         clear_screen()
-        safe_print(f"{Colors.YELLOW}*** Player {left_player} has left the game. Reason: {reason} ***{Colors.RESET}\n")
-        safe_print(f"{Colors.CYAN}{Colors.BOLD}Thank you for playing! Final Results:{Colors.RESET}")
-
-        score_display = " | ".join([f"Player {player}: {final_scores.get(str(player), 0)}" for player in range(1, self.player_count + 1)])
-        safe_print(f"{Colors.GREEN}(Round {self.round_count}) Final Scores -> {score_display}{Colors.RESET}\n")
-
-        safe_print(f"{Colors.CYAN}{Colors.BOLD}Words Found by Each Player:{Colors.RESET}")
-        for player in range(1, self.player_count + 1):
-            safe_print(f"{Colors.BLUE}Player {player}:{Colors.RESET}")
-            words = final_found_words.get(str(player), [])
-            if words:
-                safe_print(f"  Words: {', '.join(words)}")
-            else:
-                safe_print("  No words found.")
+        safe_print(f"{Colors.YELLOW}*** Player {message.get("player_number")} has left the game. Reason: {message.get("reason")} ***{Colors.RESET}\n")
+        end_game_screen(message.get("scores"), self.player_count, self.round_count, message.get("found_words"))
         self.termination_handler()
 
-    def exit_game(self) -> None:
+    def exit_game(self):
         """
         Sends a request to exit the game.
         """
         self.send_message({"type": "exit"})
 
-    def termination_handler(self) -> None:
+    def termination_handler(self):
         """
         Handles termination, closing connections and resetting state.
         """
@@ -270,7 +225,7 @@ class OnlineGameClientWrapper:
     SERVER_HOST = "cloud-47f46d7f8e7e.mattisschulte.io"
     SERVER_PORT = 44390
 
-    def start(self) -> None:
+    def start(self):
         """
         Starts the online game client wrapper, presenting options for creating or joining a room.
         """
@@ -288,24 +243,16 @@ class OnlineGameClientWrapper:
                 continue
             break
 
-    def create_room(self) -> None:
+    def create_room(self):
         """
         Prompts the user to create a room with a specified number of players.
         """
-        print_welcome_message()
-
-        while True:
-            num = input_with_prompt(f"{Colors.MAGENTA}Enter number of players (2-4): {Colors.RESET}").strip()
-            if num.isdigit() and 2 <= int(num) <= 4:
-                break
-            elif num.lower() == "exit":
-                sys.exit()
-            print(f"{Colors.RED}Invalid number of players. Please enter a number between 2 and 4.{Colors.RESET}")
+        num = get_player_count_input()
 
         self.client = OnlineGameClient(self.SERVER_HOST, self.SERVER_PORT)
-        self.client.connect_to_server(action="create", player_count=int(num))
+        self.client.connect_to_server(action="create", player_count=num)
 
-    def join_room(self) -> None:
+    def join_room(self):
         """
         Prompts the user to enter a room ID to join.
         """
