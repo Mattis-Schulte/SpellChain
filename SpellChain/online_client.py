@@ -20,15 +20,13 @@ class OnlineGameClient:
         self.server_port = port
         self.socket = None
         self.room_id = None
-        self.player_number = None
-        self.player_count = None
         self.listener_thread = None
         self.stop_listener = False
         self.game_start_event = threading.Event()
-        self.sequence = ""
-        self.scores = {}
-        self.current_player = 1
         self.round_count = 1
+        self.current_player = 1
+        self.player_number = None
+        self.player_count = None
 
     def connect_to_server(self, action: str, player_count: int = None, room_id: str = None):
         """
@@ -159,11 +157,9 @@ class OnlineGameClient:
 
         :param message: The message containing game status information.
         """
-        self.sequence = message.get("sequence", "")
-        self.scores = message.get("scores", {})
-        self.current_player = message.get("current_player", 1)
-        self.round_count = message.get("round_count", 1)
-        display_status(self.sequence, self.scores, self.player_count, self.round_count)
+        self.current_player = message.get("current_player")
+        self.round_count = message.get("round_count")
+        display_status(message.get("sequence"), message.get("scores"), self.player_count, self.round_count)
         if message.get("current_player", self.current_player) != self.player_number:
             safe_print(f"{Colors.CYAN}Waiting for Player {message.get('current_player', self.current_player)} ...{Colors.RESET}")
 
@@ -175,18 +171,16 @@ class OnlineGameClient:
         """
         player = message.get("player")
         char = message.get("char")
-        self.sequence = message.get("sequence", "")
-        self.scores = message.get("scores", self.scores)
-        self.round_count = message.get("round_count", self.round_count)
-        messages = message.get("messages", [])
+        self.round_count = message.get("round_count")
+        messages = message.get("messages")
 
         clear_screen()
-        safe_print(f"{Colors.BLUE}Player {player} added \"{char}\" -> Sequence: \"{self.sequence}\"{Colors.RESET}")
+        safe_print(f"{Colors.BLUE}Player {player} added \"{char}\" -> Sequence: \"{message.get("sequence")}\"{Colors.RESET}")
 
         if messages:
             safe_print("\n" + "\n\n".join(messages))
 
-        display_status(self.sequence, self.scores, self.player_count, self.round_count)
+        display_status(message.get("sequence"), message.get("scores"), self.player_count, self.round_count)
         if message.get("current_player", self.current_player) != self.player_number:
             safe_print(f"{Colors.CYAN}Waiting for Player {message.get('current_player', self.current_player)} ...{Colors.RESET}")
 

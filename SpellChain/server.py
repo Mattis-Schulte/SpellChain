@@ -23,7 +23,7 @@ class GameRoom:
         self.scores = defaultdict(int)
         self.sequence = ""
         self.round_count = 1
-        self.current_player_index = 1
+        self.current_player = 1
         self.found_words = defaultdict(set)
         self.lock = threading.Lock()
 
@@ -61,7 +61,7 @@ class GameRoom:
         logging.info(f"Starting game in Room {self.room_id} with {self.player_count} players.")
         initial_message = {
             "type": "game_start",
-            "current_player": self.current_player_index,
+            "current_player": self.current_player,
             "sequence": self.sequence,
             "scores": dict(self.scores),
             "round_count": self.round_count
@@ -74,7 +74,7 @@ class GameRoom:
 
         :return: The player number of the next player.
         """
-        return (self.current_player_index % self.player_count) + 1
+        return (self.current_player % self.player_count) + 1
 
     def process_add_character(self, player_number: int, char: str):
         """
@@ -84,7 +84,7 @@ class GameRoom:
         :param char: The character added by the player.
         """
         with self.lock:
-            if player_number != self.current_player_index:
+            if player_number != self.current_player:
                 return self.create_error("Not your turn.")
 
             self.sequence += char
@@ -115,13 +115,13 @@ class GameRoom:
                 self.sequence = ""
                 self.round_count += 1
 
-            self.current_player_index = self.switch_player()
+            self.current_player = self.switch_player()
             response = {
                 "type": "game_update",
                 "player": player_number,
                 "char": char,
                 "messages": messages,
-                "current_player": self.current_player_index,
+                "current_player": self.current_player,
                 "sequence": self.sequence,
                 "scores": dict(self.scores),
                 "round_count": self.round_count
