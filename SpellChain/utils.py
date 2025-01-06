@@ -1,5 +1,4 @@
 import os, threading
-
 from colors import Colors
 
 print_lock = threading.Lock()
