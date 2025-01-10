@@ -176,6 +176,7 @@ class SpellChainServer:
         self.dictionary_trie.load_dictionary(dictionary_file)
         self.rooms = {}
         self.lock = threading.Lock()
+        self.shutdown_event = threading.Event()
 
     def start(self):
         """
@@ -187,7 +188,7 @@ class SpellChainServer:
             server_socket.settimeout(1.0)
             logging.info(f"SpellChain Server started on {self.host}:{self.port}")
 
-            while True:
+            while not self.shutdown_event.is_set():
                 try:
                     client_socket, addr = server_socket.accept()
                     logging.info(f"Accepted connection from {addr}")
@@ -199,7 +200,8 @@ class SpellChainServer:
         """
         Shuts down the server, closing all active connections and clearing rooms.
         """
-        logging.info("Closing all active connections and cleaning up.")
+        logging.info("Shutdown signal received. Shutting down the server.")
+        self.shutdown_event.set()
         with self.lock:
             for room in self.rooms.values():
                 for client, _ in room.clients:
@@ -224,6 +226,8 @@ class SpellChainServer:
             client_socket.settimeout(1800)
             with client_socket, client_socket.makefile('r') as client_file:
                 for line in client_file:
+                    if self.shutdown_event.is_set():
+                        break
                     if len(line) > MAX_MESSAGE_SIZE:
                         self.send_error(client_socket, "Message too large.")
                         continue
@@ -290,12 +294,16 @@ class SpellChainServer:
             self.send_error(client_socket, "Invalid player count. Must be between 2 and 4.")
             return
 
-        room_id = str(uuid.uuid4())[:6].upper()
-        room = GameRoom(room_id, player_count, self.dictionary_trie)
+        room_id = next((candidate for candidate in (uuid.uuid4().hex[:6].upper() for _ in range(10)) if candidate not in self.rooms), None)
+        if not room_id:
+            self.send_error(client_socket, "Failed to generate a unique Room ID. Please try again.")
+            return
+        
+        new_room = GameRoom(room_id, player_count, self.dictionary_trie)
         with self.lock:
-            self.rooms[room_id] = room
+            self.rooms[room_id] = new_room
 
-        success, result = room.add_player(client_socket)
+        success, result = new_room.add_player(client_socket)
         if success:
             player_number = result
             response = {
@@ -307,9 +315,11 @@ class SpellChainServer:
             self.send_message(client_socket, response)
             logging.info(f"Room {room_id} created with {player_count} player slots.")
 
-            return room, player_number
+            return new_room, player_number
         else:
             self.send_error(client_socket, result)
+            with self.lock:
+                del self.rooms[room_id]
 
     def join_room(self, message: dict, client_socket: socket.socket, room: GameRoom, player_number: int) -> tuple[GameRoom, int] | None:
         """
@@ -329,29 +339,29 @@ class SpellChainServer:
             return
 
         with self.lock:
-            room = self.rooms.get(room_id)
+            room_to_join = self.rooms.get(room_id)
 
-        if not room:
+        if not room_to_join:
             self.send_error(client_socket, "Room ID could not be found.")
             return
 
-        success, player_number = room.add_player(client_socket)
+        success, player_number_or_error = room_to_join.add_player(client_socket)
         if not success:
-            self.send_error(client_socket, player_number)
+            self.send_error(client_socket, player_number_or_error)
             return
 
         self.send_message(client_socket, {
             "type": "room_joined",
             "room_id": room_id,
-            "player_number": player_number,
-            "player_count": room.player_count
+            "player_number": player_number_or_error,
+            "player_count": room_to_join.player_count
         })
-        logging.info(f"Player {player_number} joined Room {room_id}.")
+        logging.info(f"Player {player_number_or_error} joined Room {room_id}.")
 
-        if len(room.clients) == room.player_count:
-            room.start_game()
+        if len(room_to_join.clients) == room_to_join.player_count:
+            room_to_join.start_game()
 
-        return room, player_number
+        return room_to_join, player_number_or_error
 
     def add_character(self, message: dict, client_socket: socket.socket, room: GameRoom, player_number: int):
         """
@@ -367,8 +377,8 @@ class SpellChainServer:
             return
 
         char = message.get("char").lower()
-        ALLOWED_PUNCTUATIONS  = set("-'/ .")
-        if not isinstance(char, str) or len(char) != 1 or not (char.isalpha() or char in ALLOWED_PUNCTUATIONS):
+        ALLOWED_PUNCTUATIONS = set("-'/ .")
+        if not (isinstance(char, str) and len(char) == 1 and (char.isalpha() or char in ALLOWED_PUNCTUATIONS)):
             self.send_error(client_socket, "Invalid character input.")
             return
 
@@ -429,7 +439,6 @@ if __name__ == "__main__":
     server = SpellChainServer(HOST, PORT)
 
     def shutdown_handler(*_):
-        logging.info("Shutdown signal received. Shutting down the server.")
         server.shutdown()
         sys.exit(0)
 
