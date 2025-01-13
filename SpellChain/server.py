@@ -195,6 +195,8 @@ class SpellChainServer:
                     threading.Thread(target=self.handle_client, args=(client_socket,), daemon=True).start()
                 except socket.timeout:
                     continue
+            else:
+                server_socket.close()
 
     def shutdown(self):
         """
@@ -224,7 +226,7 @@ class SpellChainServer:
 
         try:
             client_socket.settimeout(1800)
-            with client_socket, client_socket.makefile('r') as client_file:
+            with client_socket, client_socket.makefile('r', encoding='utf-8') as client_file:
                 for line in client_file:
                     if self.shutdown_event.is_set():
                         break
@@ -376,7 +378,7 @@ class SpellChainServer:
             self.send_error(client_socket, "Invalid action. Please check your room and player status.")
             return
 
-        char = message.get("char").lower()
+        char = str(message.get("char")).lower()
         ALLOWED_PUNCTUATIONS = set("-'/ .")
         if not (isinstance(char, str) and len(char) == 1 and (char.isalpha() or char in ALLOWED_PUNCTUATIONS)):
             self.send_error(client_socket, "Invalid character input.")
