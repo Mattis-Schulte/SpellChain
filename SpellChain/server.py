@@ -183,6 +183,7 @@ class SpellChainServer:
         Starts the server, accepting connections and handling clients.
         """
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
+            server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
             server_socket.bind((self.host, self.port))
             server_socket.listen()
             server_socket.settimeout(1.0)
@@ -195,8 +196,6 @@ class SpellChainServer:
                     threading.Thread(target=self.handle_client, args=(client_socket,), daemon=True).start()
                 except socket.timeout:
                     continue
-            else:
-                server_socket.close()
 
     def shutdown(self):
         """
