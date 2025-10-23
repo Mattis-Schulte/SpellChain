@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"/>
+  <meta name="description" content="SpellChain is a demo Spring Boot application showcasing real-time WebSockets (STOMP) and a lightweight browser UI. It's a 2–4 player word game where players create/join rooms, add letters, complete dictionary-backed words, and see live updates."/>
+  <title>SpellChain — A Spring Boot Demo</title>
+  <script src="https://spellchain.mattisschulte.io/sockjs.min.js"></script>
+  <script src="https://spellchain.mattisschulte.io/stomp.min.js"></script>
+  <style>
+    :root{--fg:#000;--bg:#fff;--muted:#333;--error:#b00000;--ok:#064;--bd:#000}
+    html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font:14px/1.4 Menlo,Consolas,monospace}
+    body{display:flex;align-items:center;justify-content:center}
+    .panel{--panel-h:min(560px, calc(100dvh - 69px));width:min(860px,calc(100vw - 24px));height:var(--panel-h);border:1px solid var(--bd);border-radius:4px;background:var(--bg);display:flex;flex-direction:column;transform: translateY(calc(-1 * min(8vh, max(0px, calc((100vh - var(--panel-h)) / 2 - 12px)))));margin-left:env(safe-area-inset-left);margin-right:env(safe-area-inset-right);box-sizing:border-box}
+    .header{padding:8px 10px;border-bottom:1px solid var(--bd);display:flex;gap:10px;align-items:center}
+    .dot{width:10px;height:10px;border-radius:50%;border:1px solid var(--bd);background:#fff;flex:0 0 auto;aspect-ratio:1/1}
+    .stats{padding:6px 10px;border-bottom:1px dashed var(--bd);display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+    .badge{border:1px solid var(--bd);border-radius:3px;padding:2px 6px;background:var(--bg)}
+    .scores{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .body{flex:1;overflow:auto;padding:10px;background:var(--bg);display:flex;flex-direction:column;gap:8px;-webkit-overflow-scrolling:touch}
+    .def{border:1px solid var(--bd);border-radius:3px;padding:6px;background:var(--bg)}
+    .def .title{font-weight:bold;margin-bottom:4px}
+    .line{white-space:pre-wrap;margin:0}
+    .meta{color:var(--muted)}
+    .error{color:var(--error)}
+    .ok{color:var(--ok)}
+    .term-input{display:flex;align-items:center;gap:8px;border-top:1px dashed var(--bd);padding:8px 6px 0;margin-top:6px;min-height:40px;background:var(--bg);position:sticky;bottom:0}
+    .term-input .prompt{width:18px;text-align:right;color:var(--fg);opacity:.9;font-weight:bold}
+    .term-input input{flex:1;background:transparent;border:none;outline:none;color:var(--fg);font:inherit;caret-color:var(--fg);padding:6px 8px;min-width:36px}
+    .term-input input::placeholder{color:#666}
+    .footer{padding:8px 10px;border-top:1px solid var(--bd);display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:space-between}
+    .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .spacer{flex:1}
+    .btn{background:var(--bg);border:1px solid var(--bd);color:var(--fg);padding:6px 10px;border-radius:3px;cursor:pointer}
+    .btn[disabled]{opacity:.4;cursor:not-allowed}
+    .input{background:var(--bg);border:1px solid var(--bd);color:var(--fg);padding:6px 8px;border-radius:3px}
+    .hidden{display:none}
+    #log{flex:1 1 auto;overflow:auto}
+    .github-link{position:fixed;left:50%;transform:translateX(-50%);bottom:12px;padding:8px 12px;font-size:13px;color:var(--fg);z-index:1000;opacity:0.92;text-wrap: nowrap}
+    @media (max-width:720px){
+      body{align-items:stretch;justify-content:stretch}
+      .panel{width:100%;height:calc(100dvh - 66px);margin:8px calc(env(safe-area-inset-right) + 8px) 8px calc(env(safe-area-inset-left) + 8px);transform:none}
+      .header,.stats,.body,.footer{padding:12px}
+      .dot{width:12px;height:12px}
+      .btn,.input{padding:10px 12px}
+      #lobbyControls,#roomControls{width:100%}
+      #lobbyControls .input,#lobbyControls .btn,#roomControls .btn{flex:1 1 auto;min-width:0}
+      #joinRoomId{width:auto}
+      .term-input .prompt{width:16px}
+      .badge{padding:4px 8px}
+      .scores{gap:10px}
+    }
+  </style>
+</head>
+<body>
+<div class="panel">
+  <div class="header">
+    <div class="dot" id="connDot" title="connection"></div>
+    <div id="connStatus">disconnected</div>
+    <div class="spacer"></div>
+    <div id="roomInfo">room: —</div>
+  </div>
+
+  <div class="stats">
+    <div>Seq: <span id="seqBadge" class="badge">—</span></div>
+    <div>Round: <span id="roundBadge" class="badge">—</span></div>
+    <div class="scores">Scores: <span id="scoresBar">—</span></div>
+  </div>
+
+  <div class="body" id="bodyScroll">
+    <div id="defCard" class="def hidden"></div>
+    <div id="log"></div>
+    <div id="termInput" class="term-input hidden">
+      <div class="prompt">&gt;</div>
+      <input id="charInput" maxlength="1" inputmode="text" placeholder="enter a character" autocomplete="off"/>
+    </div>
+  </div>
+
+  <div class="footer">
+    <div class="row" id="lobbyControls">
+      <button class="btn" id="btnCreate">Create</button>
+      <input class="input" id="joinRoomId" placeholder="ROOMID" style="width:120px"/>
+      <button class="btn" id="btnJoin">Join</button>
+    </div>
+
+    <div class="row hidden" id="roomControls">
+      <button class="btn" id="btnPlay" disabled>Play</button>
+      <button class="btn hidden" id="btnAdd" disabled>Send</button>
+      <button class="btn" id="btnExit">Exit</button>
+    </div>
+
+    <div id="statusRight">waiting</div>
+  </div>
+</div>
+
+<a class="github-link" href="https://github.com/Mattis-Schulte/SpellChain" target="_blank" rel="noopener noreferrer">View this project on GitHub</a>
+
+<script>
+  let minPlayers = null;
+  let maxPlayers = null;
+  let allowedPunctuation = "-'/ .";
+  const MAX_LOG = 200;
+  const ALLOWED_PUNCTUATIONS = new Set();
+
+  function setAllowedPunctuation(s) {
+    ALLOWED_PUNCTUATIONS.clear();
+    (s || "-'/ .").split("").forEach(ch => ALLOWED_PUNCTUATIONS.add(ch));
+  }
+
+  function firstChar(s){ if(!s) return ''; const a=[...s]; return a.length?a[0]:''; }
+  function isAllowedChar(ch){
+    if(typeof ch!=='string') return false;
+    const a=[...ch]; if(a.length!==1) return false;
+    const c=a[0]; return /\p{L}/u.test(c) || ALLOWED_PUNCTUATIONS.has(c);
+  }
+
+  let stomp=null, subRoom=null;
+  let roomId=null, myNum=null, started=false, joined=0, current=null, host=1, round=null;
+  let foundWords=[];
+
+  const $ = id => document.getElementById(id);
+  const connDot=$('connDot'), connStatus=$('connStatus'), roomInfo=$('roomInfo');
+  const seqBadge=$('seqBadge'), roundBadge=$('roundBadge'), scoresBar=$('scoresBar');
+  const defCard=$('defCard'), logEl=$('log'), termInput=$('termInput'), charInput=$('charInput');
+  const lobby=$('lobbyControls'), roomCtl=$('roomControls');
+  const btnCreate=$('btnCreate'), btnJoin=$('btnJoin'), btnPlay=$('btnPlay'), btnExit=$('btnExit'), btnAdd=$('btnAdd');
+  const joinRoomId=$('joinRoomId'), statusRight=$('statusRight'), bodyScroll=$('bodyScroll');
+
+  const setConn = ok => { connDot.style.background=ok?'#000':'#fff'; connStatus.textContent=ok?'connected':'disconnected'; };
+  const escapeHtml = s => (s||'').replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+  const line = (t,c)=>{ const d=document.createElement('div'); d.className='line ' + (c||''); d.textContent=t; logEl.appendChild(d); while (logEl.children.length>MAX_LOG) logEl.removeChild(logEl.firstChild); bodyScroll.scrollTop=bodyScroll.scrollHeight; };
+  const ok = t => line(t,'ok'), err = t => line(t,'error');
+
+  function setRoomUI(){
+    const capStr = (typeof maxPlayers === 'number') ? maxPlayers : '—';
+    const code = roomId ? roomId.toUpperCase() : '—';
+    roomInfo.textContent = `room: ${code} | ${myNum?('you #'+myNum):'—'} | players: ${(typeof joined==='number'?joined:'?')}/${capStr} | ${started?'started':'not started'}`;
+    const inRoom=!!roomId;
+    lobby.classList.toggle('hidden',inRoom);
+    roomCtl.classList.toggle('hidden',!inRoom);
+    if (inRoom) joinRoomId.value='';
+    btnPlay.classList.toggle('hidden',!inRoom||started);
+    termInput.classList.toggle('hidden',!inRoom||!started);
+    btnAdd.classList.toggle('hidden',!inRoom||!started);
+    const canStart = inRoom && myNum===host && !started && (typeof minPlayers==='number' ? joined>=minPlayers : joined>=2) && (typeof maxPlayers==='number' ? joined<maxPlayers : true);
+    btnPlay.disabled = !canStart;
+    const myTurn = inRoom && started && myNum!=null && current===myNum;
+    btnAdd.disabled = !myTurn; charInput.disabled = !myTurn;
+    if (myTurn && !termInput.classList.contains('hidden')) setTimeout(()=>charInput.focus(),0);
+
+    if (!inRoom) {
+      statusRight.textContent = 'not in a room';
+    } else if (!started) {
+      if (myNum===host) {
+        const min = typeof minPlayers==='number' ? minPlayers : 2;
+        const max = typeof maxPlayers==='number' ? maxPlayers : '?';
+        statusRight.textContent = `waiting for players; Play at ${min}–${(typeof max==='number' ? max-1 : '?')}; auto-start at ${max}`;
+      } else {
+        const max = typeof maxPlayers==='number' ? maxPlayers : '?';
+        statusRight.textContent = `waiting for host; auto-start at ${max}`;
+      }
+    } else {
+      statusRight.textContent = (myTurn ? 'your turn' : 'waiting for other players');
+    }
+  }
+
+  function setSeq(s){ seqBadge.textContent = s && s.length ? s : '—'; }
+  function setScores(scores){
+    if (!scores) { scoresBar.textContent='—'; return; }
+    try {
+      const keys=Object.keys(scores).sort((a,b)=>Number(a)-Number(b));
+      scoresBar.textContent=keys.map(k=>`#${k}:${scores[k]}`).join(' | ');
+    } catch(e) { scoresBar.textContent=JSON.stringify(scores); }
+  }
+  function setRound(v){ roundBadge.textContent = (typeof v==='number' && v>0)?String(v):'—'; }
+  function clearBody(){ defCard.classList.add('hidden'); defCard.innerHTML=''; logEl.innerHTML=''; }
+
+  function showDef(word, pts, def){
+    defCard.innerHTML = `<div class="title">Completed: ${escapeHtml(word)} (+${pts})</div><div>${escapeHtml(def)}</div>`;
+    defCard.classList.remove('hidden');
+  }
+  function maybeDef(msg){
+    const m=msg.match(/^\*\*\* Player (\d+) completed "(.+?)"! \((\d+) Point/i);
+    const i=msg.indexOf('Definition: ');
+    if (!m) return false;
+    const player=Number(m[1]), word=m[2], pts=Number(m[3]||0), def=i>=0?msg.slice(i+12).trim():'';
+    showDef(word, pts, def);
+    foundWords.push({player,word,points:pts});
+    return true;
+  }
+  function showResults(scores, rounds, lastSeq){
+    const es = scores?Object.entries(scores).map(([k,v])=>({p:Number(k),s:Number(v)})):[]; 
+    es.sort((a,b)=>b.s-a.s||a.p-b.p);
+    const top=es.length?es[0].s:0;
+    const winners = es.filter(e=>e.s===top);
+    const winnersStr = winners.length
+      ? winners.map(e=>`#${e.p}${e.p===myNum?' (You)':''}`).join(', ')
+      : '';
+    line('Game Over','meta');
+    if (es.length){
+      line('Final scores:','meta');
+      es.forEach(e => line(` - Player #${e.p}: ${e.s}`,'meta'));
+      line(`Winner${winners.length>1?'s':''}: ${winnersStr}`,'meta');
+    } else {
+      line('No scores recorded.','meta');
+    }
+    if (foundWords.length){ line('Words found:','meta'); foundWords.forEach(w=>line(` - Player #${w.player}: ${w.word} (+${w.points})`,'meta')); }
+    if (typeof rounds==='number') line('Rounds: '+rounds,'meta');
+    if (typeof lastSeq==='string' && lastSeq.length) line('Last sequence: "'+escapeHtml(lastSeq)+'"','meta');
+  }
+
+  function sendApp(dest, body){ stomp.send(dest, {}, body?JSON.stringify(body):'{}'); }
+
+  function subscribeRoom(id){
+    if (subRoom) try{subRoom.unsubscribe()}catch(e){}
+    subRoom = stomp.subscribe('/topic/rooms/'+id, m => {
+      try { handleRoom(JSON.parse(m.body)); } catch(e){ err('bad room update'); }
+    });
+  }
+
+  function endRoom(clear=false){
+    if (subRoom) try{subRoom.unsubscribe()}catch(e){}
+    roomId=null; myNum=null; started=false; joined=0; current=null; host=1; round=null; foundWords=[];
+    setSeq(''); setScores(null); setRound(null); if (clear) clearBody(); setRoomUI();
+  }
+
+  function handleUser(p){
+    if (!p) return;
+    if (p.type==='room_created'){
+      clearBody();
+      roomId=(p.roomId||'').toUpperCase();
+      myNum=p.playerNumber; started=false; current=null; host=1; joined=Math.max(1,myNum); round=null; foundWords=[];
+      ok(`room ${roomId} — you are player #${myNum}`);
+      setRound(round); setRoomUI(); subscribeRoom(roomId);
+    } else if (p.type==='error') {
+      err(p.message||'error');
+    }
+  }
+
+  function handleRoom(u){
+    if (!u) return;
+    const prevStarted=started, prevCur=current;
+    if (typeof u.started==='boolean') started=u.started;
+    if (typeof u.joinedCount==='number') joined=u.joinedCount;
+    if (typeof u.currentPlayer==='number') current=u.currentPlayer;
+    if (typeof u.hostPlayer==='number') host=u.hostPlayer;
+    if (typeof u.roundCount==='number') round=u.roundCount;
+
+    if (!prevStarted && started) { clearBody(); foundWords=[]; if (typeof u.roundCount!=='number') round=1; }
+
+    if (Array.isArray(u.messages) && u.messages.length){
+      clearBody();
+      u.messages.forEach(m=>{ if (!maybeDef(m)) line(m); });
+    }
+
+    if (typeof u.sequence==='string') setSeq(u.sequence);
+    if (u.scores) setScores(u.scores);
+    setRound(started?round:null);
+    setRoomUI();
+    if (started && current!==prevCur && current===myNum) setRoomUI();
+
+    const endedNow = prevStarted && started===false;
+    const endedByMsg = Array.isArray(u.messages) && u.messages.some(m=>/room closed|game ended/i.test(m));
+    if (endedNow || endedByMsg){
+      showResults(u.scores||null, (typeof u.roundCount==='number'?u.roundCount:round), u.sequence);
+      endRoom();
+    }
+  }
+
+  function connect(){
+    const sock=new SockJS('/ws'); stomp=Stomp.over(sock); stomp.debug=null;
+    stomp.connect({}, () => {
+      setConn(true);
+      stomp.subscribe('/user/queue/reply', m => { try{ handleUser(JSON.parse(m.body)); }catch(e){ err('bad user reply'); } });
+      setRoomUI();
+    }, () => { setConn(false); err('connection error'); });
+  }
+
+  btnCreate.onclick=()=>{ if(!stomp) return err('not connected'); sendApp('/app/createRoom'); };
+  btnJoin.onclick=()=>{ if(!stomp) return err('not connected'); const rid=(joinRoomId.value||'').trim().toUpperCase(); if(!rid) return err('enter room code'); sendApp('/app/joinRoom',{roomId:rid}); };
+  btnPlay.onclick=()=>{ if(!stomp) return err('not connected'); if(!roomId) return err('not in a room'); sendApp('/app/start',{roomId}); };
+  btnExit.onclick=()=>{ if(!stomp) return err('not connected'); if(!roomId) return err('not in a room');
+    if (!started) { sendApp('/app/exit',{}); endRoom(true); return; }
+    sendApp('/app/exit',{}); btnAdd.disabled=charInput.disabled=btnPlay.disabled=btnExit.disabled=true; statusRight.textContent='leaving…';
+  };
+  btnAdd.onclick=()=>{ if(!stomp) return err('not connected'); if(!roomId) return err('not in a room');
+    const chRaw=firstChar(charInput.value||''); if(!isAllowedChar(chRaw)) return err(`invalid character: enter a single letter or one of ${allowedPunctuation}`);
+    const ch=chRaw.toLowerCase(); sendApp('/app/addCharacter',{roomId,ch}); charInput.value=''; charInput.focus();
+  };
+  joinRoomId.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); btnJoin.click(); } });
+  charInput.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); btnAdd.click(); } });
+
+  function loadConfigAndStart(){
+    fetch('/config').then(r=>{
+      if (!r.ok) throw new Error('config fetch failed');
+      return r.json();
+    }).then(cfg=>{
+      if (cfg && typeof cfg.minPlayers==='number') minPlayers = cfg.minPlayers;
+      if (cfg && typeof cfg.maxPlayers==='number') maxPlayers = cfg.maxPlayers;
+      if (cfg && typeof cfg.allowedPunctuation==='string') {
+        allowedPunctuation = cfg.allowedPunctuation;
+        setAllowedPunctuation(allowedPunctuation);
+      } else {
+        setAllowedPunctuation("-'/ .");
+      }
+    }).catch(e=>{
+      minPlayers = 2;
+      maxPlayers = 4;
+      allowedPunctuation = "-'/ .";
+      setAllowedPunctuation(allowedPunctuation);
+      err('Unable to load server config, using defaults 2..4');
+    }).finally(()=>{
+      connect();
+    });
+  }
+
+  window.addEventListener('load', loadConfigAndStart);
+  window.addEventListener('beforeunload', ()=>{ try{ stomp && sendApp('/app/exit',{});}catch(e){} try{ stomp && stomp.disconnect(); }catch(e){} });
+</script>
+</body>
+</html>

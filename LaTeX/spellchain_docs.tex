@@ -13,12 +13,12 @@
 
 \begin{document}
 
-\title{\textbf{SpellChain -- Take-Home Exam}\\ \vspace{0.2cm}\large \textbf{Prof. Dr.-Ing. Thomas Nierhoff}}
+\title{\textbf{SpellChain -- A Spring Boot Demo}\\ \vspace{0.2cm}\large \textbf{Prof. Dr.-Ing. Christoph Neumann}}
 \author{\normalsize\textbf{Mattis Schulte}\\ {\small OTH-Amberg-Weiden, \today}}\date{}
 \maketitle
 
 \section*{Introduction and Objective}
-\textit{SpellChain} is a fun and educational word-building game for 2 to 4 players. Players take turns adding letters to form valid English words while trying to avoid creating invalid prefixes. The objective of the game is to build longer words, which earn more points. Players can choose to either work together or compete against each other to achieve this. \textit{SpellChain} not only encourages strategic thinking but also helps enhance vocabulary skills in an enjoyable and potentially competitive setting. The game uses a subset from the Oxford English Dictionary, which can be accessed \href{https://raw.githubusercontent.com/sujithps/Dictionary/master/Oxford%20English%20Dictionary.txt}{\textcolor{links}{here}}, providing a vast and challenging collection of words. Additionally, the game supports online play, allowing players to compete remotely.
+\textit{SpellChain} is a fun and educational word-building game for 2 to 4 players. Players take turns adding letters to form valid English words while trying to avoid creating invalid prefixes. The objective of the game is to build longer words, which earn more points. Players can choose to either work together or compete against each other to achieve this. \textit{SpellChain} not only encourages strategic thinking but also helps enhance vocabulary skills in an enjoyable and potentially competitive setting. The game uses a subset from the Oxford English Dictionary, which can be accessed \href{https://raw.githubusercontent.com/sujithps/Dictionary/master/Oxford%20English%20Dictionary.txt}{\textcolor{links}{here}}, providing a vast and challenging collection of words. Please Note: This project has been migrated from a Python console/server implementation to a Java Spring Boot application with a browser-based interface. It supports online play via WebSockets (STOMP); you can play the live demo \href{https://spellchain.mattisschulte.io/}{\textcolor{links}{here}}.
 
 \section*{Basic Rules and Scoring}
 The rules of \textit{SpellChain} are designed to keep the game fair while also encouraging a competitive atmosphere. These rules consist of the following key elements:
@@ -29,21 +29,21 @@ The rules of \textit{SpellChain} are designed to keep the game fair while also e
     \[
         \text{Points Earned} = \left\lfloor \frac{\text{Word Length} + 1}{2} \right\rfloor
     \]
-    For instance, completing the word \textit{"python"} (six letters) would earn the player three points.
+    For instance, completing the word \textit{"javanese"} (eight letters) would earn the player four points.
     \item \textbf{Preventing Word Reuse:} After a word has been successfully completed and points have been awarded to a player, it cannot be used again by any player during the game. This rule encourages players to be inventive and strategic in their word choices.
     \item \textbf{Handling Invalid Sequences:} If a player adds a letter or punctuation mark that doesn't match any prefix in the dictionary, the sequence resets, a new round starts, and the turn passes to the next player. For example, if the sequence becomes \textit{"zz"}, which isn't the start of any English word, the sequence resets.
-    \item \textbf{Exiting the Game:} At any point during the game, a player can type \textit{"exit"} to end the game. This feature provides flexibility, allowing players to conclude the game whenever they choose.
+    \item \textbf{Exiting the Game:} At any point, a player can leave the room using the UI, which ends an ongoing game and broadcasts a summary (see below).
 \end{enumerate}
 After each move, the game will display the current sequence, all players' scores, and the current round to keep everyone updated on the game's progress.
 
 \section*{Winning Conditions}
-The game does not enforce a predefined win condition, allowing players to play indefinitely or set custom rules such as a target score, maximum rounds, or a time limit. At the end of the game, triggered by the \textit{"exit"} command, a detailed summary is displayed. This summary includes each player's total score, the number of rounds, and the words they successfully completed, providing a clear overview of the game's outcome.
+The game does not enforce a predefined win condition, allowing players to play indefinitely or set custom rules such as a target score, maximum rounds, or a time limit. If a player exits during an ongoing game, the server ends the game and broadcasts a detailed summary, including each player's total score, the number of rounds, and the words they successfully completed, providing a clear overview of the game's outcome.
 
 \section*{Implementation Highlights}
-\textit{SpellChain} is built using Python and incorporates several key features that ensure a smooth and enjoyable playing experience, these include:
+\textit{SpellChain} is now implemented using Java and Spring Boot, while preserving the original smooth and enjoyable game mechanics:
 \begin{enumerate}
-    \item \textbf{Trie Data Structure:} \textit{SpellChain} uses a trie, an efficient tree-like data structure, to manage dictionary words. Each node in the trie represents a character, with paths forming words or prefixes. This arrangement allows rapid retrieval and insertion, crucial for quick validation of sequences as prefixes or complete words, ensuring responsiveness, especially with extensive datasets like the Oxford English Dictionary.
-    \item \textbf{Interactive Console Interface:} The game  features an interactive console interface that presents users with clear prompts and color-coded feedback, making it easy to track game progress and player standings throughout the gameplay.
-    \item \textbf{Online Multiplayer Support:} Supporting 2 to 4 players, \textit{SpellChain} employs a server-based architecture utilizing TCP sockets. This facilitates reliable communication between players and ensures a smooth online multiplayer experience.
+    \item \textbf{Concurrent Trie Dictionary:} The dictionary is loaded into a thread-safe trie at startup. Each node represents a character, enabling fast prefix and word checks. Definitions are stored per word, and multiple definitions are merged. This ensures responsiveness with large datasets like the Oxford English Dictionary.
+    \item \textbf{WebSockets (STOMP) with Spring Boot:} Real-time updates are delivered over STOMP on WebSockets (SockJS). The server exposes message mappings for creating/joining rooms, starting games, adding characters, and exiting. Game state is broadcast to \texttt{/topic/rooms/\{roomId\}}, and per-user replies (e.g., errors, room creation) are sent to \texttt{/user/queue/reply}.
+    \item \textbf{Browser-Based Interface:} The console interface has been replaced by a lightweight web UI. Players can create or join rooms, start the game (host), add characters on their turn, and exit the room. The interface shows the live sequence, scores, round count, system messages, and definitions for completed words.
 \end{enumerate}
 \end{document}

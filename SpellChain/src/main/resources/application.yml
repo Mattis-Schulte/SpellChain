@@ -1,0 +1,14 @@
+server:
+  port: 8081
+
+spellchain:
+  min-players: 2
+  max-players: 4
+  allowed-punctuation: "-'/ ."
+  dictionary-path: classpath:oxford_english_dictionary.txt
+  allowed-origins: "https://spellchain.mattisschulte.io"
+
+spring:
+  jackson:
+    serialization:
+      INDENT_OUTPUT: false
