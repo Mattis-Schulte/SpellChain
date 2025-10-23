@@ -27,10 +27,10 @@ public class DictionaryService implements Dictionary {
     if (!file.exists()) {
       throw new IllegalStateException("Dictionary not found: " + file);
     }
-    try (BufferedReader br =
-        new BufferedReader(new InputStreamReader(file.getInputStream()))) {
+    try (BufferedReader br = new BufferedReader(new InputStreamReader(file.getInputStream()))) {
       String line;
       while ((line = br.readLine()) != null) {
+        line = line.replace("\u007F ", "");
         String[] parts = SEP.split(line.trim(), 2);
         if (parts.length < 2) {
           continue;

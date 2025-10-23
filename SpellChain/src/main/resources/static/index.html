@@ -17,18 +17,18 @@
     .stats{padding:6px 10px;border-bottom:1px dashed var(--bd);display:flex;gap:16px;align-items:center;flex-wrap:wrap}
     .badge{border:1px solid var(--bd);border-radius:3px;padding:2px 6px;background:var(--bg)}
     .scores{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-    .body{flex:1;overflow:auto;padding:10px;background:var(--bg);display:flex;flex-direction:column;gap:8px;-webkit-overflow-scrolling:touch}
+    .body{flex:1;overflow:auto;padding:10px 10px 0 10px;background:var(--bg);display:flex;flex-direction:column;gap:8px;-webkit-overflow-scrolling:touch}
     .def{border:1px solid var(--bd);border-radius:3px;padding:6px;background:var(--bg)}
     .def .title{font-weight:bold;margin-bottom:4px}
     .line{white-space:pre-wrap;margin:0}
     .meta{color:var(--muted)}
     .error{color:var(--error)}
     .ok{color:var(--ok)}
-    .term-input{display:flex;align-items:center;gap:8px;border-top:1px dashed var(--bd);padding:8px 6px 0;margin-top:6px;min-height:40px;background:var(--bg);position:sticky;bottom:0}
+    .term-input{display:flex;align-items:center;gap:8px;border-top:1px dashed var(--bd);padding:8px 6px;margin-top:6px;min-height:40px;background:var(--bg);position:sticky;bottom:0}
     .term-input .prompt{width:18px;text-align:right;color:var(--fg);opacity:.9;font-weight:bold}
     .term-input input{flex:1;background:transparent;border:none;outline:none;color:var(--fg);font:inherit;caret-color:var(--fg);padding:6px 8px;min-width:36px}
     .term-input input::placeholder{color:#666}
-    .footer{padding:8px 10px;border-top:1px solid var(--bd);display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:space-between}
+    .footer{padding:8px 10px;border-top:1px solid var(--bd);display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:space-between;z-index:1}
     .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
     .spacer{flex:1}
     .btn{background:var(--bg);border:1px solid var(--bd);color:var(--fg);padding:6px 10px;border-radius:3px;cursor:pointer}
@@ -41,6 +41,7 @@
       body{align-items:stretch;justify-content:stretch}
       .panel{width:100%;height:calc(100dvh - 66px);margin:8px calc(env(safe-area-inset-right) + 8px) 8px calc(env(safe-area-inset-left) + 8px);transform:none}
       .header,.stats,.body,.footer{padding:12px}
+      .body{padding-bottom:0}
       .dot{width:12px;height:12px}
       .btn,.input{padding:10px 12px}
       #lobbyControls,#roomControls{width:100%}
