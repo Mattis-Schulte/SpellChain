@@ -73,7 +73,7 @@ public class GameService {
     }
     publisher.publish(b);
     log.info("Created room {} host #1", id);
-    return new RoomCreatedMessage(id, 1, room.capacity());
+    return new RoomCreatedMessage(id, 1, room.capacity(), room.started());
   }
 
     public RoomCreatedMessage joinRoom(String sid, String id) {
@@ -107,7 +107,7 @@ public class GameService {
         toPublish = GameBroadcast.of(id, snap(room)).withMessages(msgs);
         log.info("Session {} joined room {} as #{}", sid, id, num);
 
-        reply = new RoomCreatedMessage(id, num, room.capacity());
+        reply = new RoomCreatedMessage(id, num, room.capacity(), room.started());
     } finally {
         room.lock().unlock();
     }

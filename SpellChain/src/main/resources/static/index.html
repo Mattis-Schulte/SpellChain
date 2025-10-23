@@ -245,7 +245,7 @@
     if (p.type==='room_created'){
       clearBody();
       roomId=(p.roomId||'').toUpperCase();
-      myNum=p.playerNumber; started=false; current=null; host=1; joined=Math.max(1,myNum); round=null; foundWords=[];
+      myNum=p.playerNumber; started=!!p.started; current=null; host=1; joined=Math.max(1,myNum); round=null;
       ok(`room ${roomId} — you are player #${myNum}`);
       setRound(round); setRoomUI(); subscribeRoom(roomId);
     } else if (p.type==='error') {
