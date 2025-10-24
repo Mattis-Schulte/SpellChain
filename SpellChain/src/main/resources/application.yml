@@ -5,7 +5,7 @@ spellchain:
   min-players: 2
   max-players: 4
   allowed-punctuation: "-'/ ."
-  dictionary-path: classpath:oxford_english_dictionary.txt
+  dictionary-path: classpath:wiktionary_english_dictionary.json
   allowed-origins: "https://spellchain.mattisschulte.io"
 
 spring:

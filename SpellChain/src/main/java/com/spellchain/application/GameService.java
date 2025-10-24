@@ -209,7 +209,7 @@ public class GameService {
                   cand,
                   pts,
                   pts != 1 ? "s" : "",
-                  def.length() > 600 ? def.substring(0, 600) + "…" : def));
+                  def));
         } else {
           messages.add("\"" + cand + "\" has already been used. No points this round.");
         }

@@ -1,13 +1,12 @@
 package com.spellchain.infrastructure;
 
+import com.fasterxml.jackson.core.JsonToken;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.spellchain.application.port.Dictionary;
 import jakarta.annotation.PostConstruct;
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.util.Locale;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.regex.Pattern;
+import java.io.InputStream;
+import java.util.*;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
@@ -16,89 +15,118 @@ import org.springframework.stereotype.Service;
 public class DictionaryService implements Dictionary {
   private final Resource file;
   private final TrieNode root = new TrieNode();
-  private static final Pattern SEP = Pattern.compile("\\s{2,}");
+  private static final ObjectMapper MAPPER = new ObjectMapper();
+  private static final int DEF_MAX = 500;
 
   public DictionaryService(@Value("${spellchain.dictionary-path}") Resource file) {
-    this.file = file;
+    this.file = Objects.requireNonNull(file);
   }
+
+  private static final class TrieNode {
+    Map<Character, TrieNode> kids;
+    String def;
+  }
+
+  public record Sense(String gloss, List<String> tags) {}
 
   @PostConstruct
   public void load() throws Exception {
-    if (!file.exists()) {
-      throw new IllegalStateException("Dictionary not found: " + file);
-    }
-    try (BufferedReader br = new BufferedReader(new InputStreamReader(file.getInputStream()))) {
-      String line;
-      while ((line = br.readLine()) != null) {
-        line = line.replace("\u007F ", "");
-        String[] parts = SEP.split(line.trim(), 2);
-        if (parts.length < 2) {
-          continue;
-        }
-        String word = parts[0].toLowerCase().replaceAll("\\d+$", "");
-        insert(word, parts[1].trim());
+    if (!file.exists()) throw new IllegalStateException("Dictionary not found: " + file);
+
+    try (InputStream in = file.getInputStream(); var p = MAPPER.createParser(in)) {
+      if (p.nextToken() != JsonToken.START_OBJECT) {
+        throw new IllegalStateException("Expected root JSON object");
       }
-    }
-  }
+      while (p.nextToken() != JsonToken.END_OBJECT) {
+        String w = p.getCurrentName();
+        p.nextToken();
 
-  private static class TrieNode {
-    final Map<Character, TrieNode> kids = new ConcurrentHashMap<>();
-    volatile boolean word;
-    volatile String def;
-  }
+        Map<String, List<Sense>> posMap =
+            MAPPER.readValue(p, new TypeReference<Map<String, List<Sense>>>() {});
 
-  private void insert(String w, String d) {
-    TrieNode n = root;
-    for (char c : w.toCharArray()) {
-      n = n.kids.computeIfAbsent(c, k -> new TrieNode());
-    }
-    synchronized (n) {
-      n.def = n.word ? n.def + " OR " + d : d;
-      n.word = true;
+        if (w == null || posMap == null) continue;
+        String word = w.toLowerCase(Locale.ROOT);
+
+        Map<String, List<Sense>> cleaned = new HashMap<>();
+        posMap.forEach((pos, senses) -> {
+          if (pos == null) return;
+          List<Sense> list = (senses == null ? List.<Sense>of() : senses).stream()
+              .filter(Objects::nonNull)
+              .map(s -> new Sense(
+                  s.gloss() == null ? "" : s.gloss(),
+                  s.tags() == null ? List.of() : List.copyOf(s.tags())))
+              .filter(s -> !s.gloss().isBlank())
+              .toList();
+          if (!list.isEmpty()) cleaned.put(pos, list);
+        });
+
+        if (!cleaned.isEmpty()) {
+          String def = truncate(format(cleaned), DEF_MAX);
+          TrieNode n = root;
+          for (char c : word.toCharArray()) {
+            if (n.kids == null) n.kids = new HashMap<>(2);
+            n = n.kids.computeIfAbsent(c, k -> new TrieNode());
+          }
+          n.def = def;
+        }
+      }
     }
   }
 
   @Override
   public boolean isWord(String w) {
-    if (w == null) {
-      return false;
-    }
-    w = w.toLowerCase(Locale.ROOT);
-    TrieNode n = node(w);
-    return n != null && n.word;
+    if (w == null) return false;
+    TrieNode n = node(w.toLowerCase(Locale.ROOT));
+    return n != null && n.def != null;
   }
 
   @Override
   public boolean hasPrefix(String p) {
-    if (p == null) {
-      return false;
-    }
-    p = p.toLowerCase(Locale.ROOT);
-    TrieNode n = node(p);
-    return n != null && !n.kids.isEmpty();
+    if (p == null) return false;
+    TrieNode n = node(p.toLowerCase(Locale.ROOT));
+    return n != null && n.kids != null && !n.kids.isEmpty();
   }
 
   @Override
   public String definition(String w) {
-    if (w == null) {
-      return "No definition available.";
-    }
-    w = w.toLowerCase(Locale.ROOT);
-    TrieNode n = node(w);
-    return (n != null && n.word) ? n.def : "No definition available.";
+    if (w == null) return "No definition available.";
+    TrieNode n = node(w.toLowerCase(Locale.ROOT));
+    return (n == null || n.def == null) ? "No definition available." : n.def;
   }
 
   private TrieNode node(String s) {
-    if (s == null) {
-      return null;
-    }
     TrieNode n = root;
-    for (char c : s.toCharArray()) {
-      n = n.kids.get(c);
-      if (n == null) {
-        return null;
-      }
+    for (int i = 0; i < s.length() && n != null; i++) {
+      n = (n.kids == null) ? null : n.kids.get(s.charAt(i));
     }
     return n;
+  }
+
+  private static String format(Map<String, List<Sense>> byPos) {
+    StringBuilder sb = new StringBuilder();
+    boolean firstPos = true;
+    for (Map.Entry<String, List<Sense>> e : new TreeMap<>(byPos).entrySet()) {
+      List<Sense> senses = e.getValue();
+      if (senses == null || senses.isEmpty()) continue;
+
+      if (!firstPos) sb.append(" | ");
+      firstPos = false;
+      sb.append(e.getKey()).append(": ");
+
+      for (int i = 0; i < senses.size(); i++) {
+        Sense s = senses.get(i);
+        if (i > 0) sb.append(" ; ");
+        sb.append(i + 1).append(". ").append(s.gloss());
+        if (!s.tags().isEmpty()) {
+          sb.append(" [").append(String.join(", ", s.tags())).append("]");
+        }
+      }
+    }
+    return sb.length() == 0 ? "No definition available." : sb.toString();
+  }
+
+  private static String truncate(String s, int max) {
+    if (s == null || s.length() <= max) return s;
+    return s.substring(0, Math.max(0, max - 1)) + "…";
   }
 }
