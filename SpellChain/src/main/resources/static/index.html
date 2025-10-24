@@ -11,15 +11,7 @@
     :root{--fg:#000;--bg:#fff;--muted:#333;--error:#b00000;--ok:#064;--bd:#000;--disabled:#999}
     .dark{--fg:#fff;--bg:#000;--muted:#bbb;--error:#ff8a8a;--ok:#8f8;--bd:#fff}
 
-    html,body{
-      margin:0;
-      background:var(--bg);
-      color:var(--fg);
-      font:14px/1.4 Consolas,monospace;
-      height:auto;
-      min-height:100vh;
-      min-height:100svh;
-    }
+    html,body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.4 Consolas,monospace;height:auto;min-height:100vh;min-height:100svh}
     body{display:flex;align-items:center;justify-content:center}
 
     .panel{
@@ -30,54 +22,39 @@
       height:var(--panel-h);
       border:1px solid var(--bd);
       border-radius:4px;
-      background:var(--bg);
       display:flex;
       flex-direction:column;
 
       transform:translateY(calc(-1 * min(8vh, max(0px, calc((100vh - var(--panel-h)) / 2 - 12px)))));
       transform:translateY(calc(-1 * min(8svh, max(0px, calc((100svh - var(--panel-h)) / 2 - 12px)))));
 
-      margin-left:env(safe-area-inset-left);
-      margin-right:env(safe-area-inset-right);
+      margin:0 env(safe-area-inset-right) 0 env(safe-area-inset-left);
       box-sizing:border-box;
+      overflow: hidden
     }
 
     .header{padding:8px 10px;border-bottom:1px solid var(--bd);display:flex;gap:10px;align-items:center}
-    .dot{width:10px;height:10px;border-radius:50%;border:1px solid var(--bd);background:var(--bg);flex:0 0 auto;aspect-ratio:1/1}
+    .dot{width:10px;height:10px;border-radius:50%;border:1px solid var(--bd);background:var(--bg);aspect-ratio:1/1}
     .dot.connected{background:var(--bd)}
 
     .stats{padding:6px 10px;border-bottom:1px dashed var(--bd);display:flex;gap:16px;align-items:center;flex-wrap:wrap}
     .badge,.input,.btn{background:var(--bg);border:1px solid var(--bd);color:var(--fg);border-radius:3px}
     .badge{padding:2px 6px;white-space:pre}
-    .scores{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .scores{display:flex;gap:8px;flex-wrap:wrap}
 
-    .body{
-      flex:1;
-      min-height:0;
-      overflow:auto;
-      padding:10px 10px 0;
-      display:flex;
-      flex-direction:column;
-      gap:8px;
-      background:var(--bg);
-      -webkit-overflow-scrolling:touch
-    }
-    .def{border:1px solid var(--bd);border-radius:3px;padding:6px;background:var(--bg)}
+    .body{flex:1;overflow:auto;padding:10px 10px;display:flex;flex-direction:column;gap:8px;-webkit-overflow-scrolling:touch}
+    .body:not(:has(#termInput.hidden)){padding-bottom:0}
+    .def{border:1px solid var(--bd);border-radius:3px;padding:6px}
     .def .title{font-weight:bold;margin-bottom:4px}
     .line{white-space:pre-wrap;margin:0}
     .meta{color:var(--muted)}
     .error{color:var(--error)}
     .ok{color:var(--ok)}
 
-    .term-input{
-      display:flex;align-items:center;gap:8px;border-top:1px dashed var(--bd);
-      padding:8px 6px;margin-top:6px;min-height:40px;background:var(--bg);
-      position:sticky;
-      bottom:env(safe-area-inset-bottom, 0)
-    }
+    .term-input{display:flex;align-items:center;gap:8px;border-top:1px dashed var(--bd);padding:8px 6px;min-height:40px;background:var(--bg);position:sticky;bottom:0}
     .term-input .prompt{width:18px;text-align:right;color:var(--fg);opacity:.9;font-weight:bold}
     .term-input input{flex:1;background:transparent;border:none;outline:none;color:var(--fg);font:inherit;caret-color:var(--fg);padding:6px 8px;min-width:36px}
-    input::placeholder{color:var(--disabled);opacity:1}
+    input::placeholder{color:var(--disabled)}
 
     .footer{padding:8px 10px;border-top:1px solid var(--bd);display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:space-between;z-index:1}
     .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
@@ -86,7 +63,7 @@
     .btn[disabled]{color:var(--disabled);border-color:var(--disabled);cursor:not-allowed}
     .input{padding:6px 8px}
     .hidden{display:none}
-    #log{flex:1 1 auto;overflow:auto;margin-bottom:10px}
+    #log{flex:1 1 auto}
     .github-link{position:fixed;left:50%;transform:translateX(-50%);bottom:12px;padding:8px 12px;font-size:13px;color:var(--fg);z-index:1000;opacity:.92;white-space:nowrap}
 
     @media (max-width:720px){
@@ -94,21 +71,16 @@
       .panel{
         width:100%;
         height:calc(100vh - 66px);
-        height:calc(100svh - 66px);
-        margin:8px calc(env(safe-area-inset-right) + 8px) 8px calc(env(safe-area-inset-left) + 8px);
-        transform:none
+        height:calc(100svh - 66px);margin:8px calc(env(safe-area-inset-right) + 8px) 8px calc(env(safe-area-inset-left) + 8px);transform:none
       }
       .header,.stats,.body,.footer{padding:12px}
-      .body{padding-bottom:0}
       .dot{width:12px;height:12px}
       .btn,.input{padding:10px 12px}
       #lobbyControls,#roomControls{width:100%}
       #lobbyControls .input,#lobbyControls .btn,#roomControls .btn{flex:1 1 auto;min-width:0}
       #joinRoomId{width:auto}
-      #log{margin-bottom:12px}
       .term-input .prompt{width:16px}
       .badge{padding:4px 8px}
-      .scores{gap:10px}
     }
   </style>
 </head>
@@ -127,7 +99,7 @@
     <div class="scores">Scores: <span id="scoresBar">—</span></div>
   </div>
 
-  <div class="body" id="bodyScroll">
+  <div class="body">
     <div id="defCard" class="def hidden"></div>
     <div id="log"></div>
     <div id="termInput" class="term-input hidden">
@@ -171,10 +143,10 @@
   const defCard = $('defCard'), logEl = $('log'), termInput = $('termInput'), charInput = $('charInput');
   const lobby = $('lobbyControls'), roomCtl = $('roomControls');
   const btnCreate = $('btnCreate'), btnJoin = $('btnJoin'), btnPlay = $('btnPlay'), btnExit = $('btnExit'), btnAdd = $('btnAdd');
-  const joinRoomId = $('joinRoomId'), statusRight = $('statusRight'), bodyScroll = $('bodyScroll');
+  const joinRoomId = $('joinRoomId'), statusRight = $('statusRight');
 
   const escapeHtml = s => (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const line = (t,c='') => { const d=document.createElement('div'); d.className='line '+c; d.textContent=t; logEl.appendChild(d); while (logEl.children.length>MAX_LOG) logEl.removeChild(logEl.firstChild); bodyScroll.scrollTop=bodyScroll.scrollHeight; };
+  const line = (t,c='') => { const d=document.createElement('div'); d.className='line '+c; d.textContent=t; logEl.appendChild(d); while (logEl.children.length>MAX_LOG) logEl.removeChild(logEl.firstChild); };
   const ok = t => line(t,'ok'), err = t => line(t,'error');
 
   function setAllowedPunctuation(s){
