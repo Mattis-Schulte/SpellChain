@@ -5,8 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"/>
   <meta name="description" content="SpellChain is a demo Spring Boot application showcasing real-time WebSockets (STOMP) and a lightweight browser UI. It's a 2–4 player word game where players create/join rooms, add letters, complete dictionary-backed words, and see live updates." />
   <title>SpellChain — A Spring Boot Demo</title>
-  <script src="https://spellchain.mattisschulte.io/sockjs.min.js"></script>
-  <script src="https://spellchain.mattisschulte.io/stomp.min.js"></script>
   <style>
     :root{--fg:#000;--bg:#fff;--muted:#333;--error:#b00000;--ok:#064;--bd:#000;--disabled:#999}
     .dark{--fg:#fff;--bg:#000;--muted:#bbb;--error:#ff8a8a;--ok:#8f8;--bd:#fff}
@@ -127,235 +125,348 @@
 
 <a class="github-link" href="https://github.com/Mattis-Schulte/SpellChain" target="_blank" rel="noopener noreferrer">View this project on GitHub</a>
 
-<script>
-  let minPlayers = null, maxPlayers = null;
-  let allowedPuncSet = null;
-  const MAX_LOG = 200;
+<script type="module">
+  import { Client } from 'https://spellchain.mattisschulte.io/stomp.min.js';
 
-  let stomp = null, subRoom = null;
-  let roomId = null, myNum = null, started = false, joined = 0, current = null, host = 1, round = null;
-  let foundWords = [];
-  let leaving = false;
+  // Consts
+  const MAX_LOG = 300, HB = 10000, LETTER_RE = /\p{L}/u;
 
+  // DOM
   const $ = id => document.getElementById(id);
-  const connDot = $('connDot'), connStatus = $('connStatus'), roomInfo = $('roomInfo');
-  const seqBadge = $('seqBadge'), roundBadge = $('roundBadge'), scoresBar = $('scoresBar');
-  const defCard = $('defCard'), logEl = $('log'), termInput = $('termInput'), charInput = $('charInput');
-  const lobby = $('lobbyControls'), roomCtl = $('roomControls');
-  const btnCreate = $('btnCreate'), btnJoin = $('btnJoin'), btnPlay = $('btnPlay'), btnExit = $('btnExit'), btnAdd = $('btnAdd');
-  const joinRoomId = $('joinRoomId'), statusRight = $('statusRight');
+  const ui = {
+    connDot: $('connDot'), connStatus: $('connStatus'), roomInfo: $('roomInfo'),
+    seq: $('seqBadge'), round: $('roundBadge'), scores: $('scoresBar'),
+    def: $('defCard'), log: $('log'), term: $('termInput'), char: $('charInput'),
+    lobby: $('lobbyControls'), roomCtl: $('roomControls'),
+    btnCreate: $('btnCreate'), btnJoin: $('btnJoin'), btnPlay: $('btnPlay'),
+    btnExit: $('btnExit'), btnAdd: $('btnAdd'),
+    joinId: $('joinRoomId'), status: $('statusRight')
+  };
 
-  const escapeHtml = s => (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const line = (t,c='') => { const d=document.createElement('div'); d.className='line '+c; d.textContent=t; logEl.appendChild(d); while (logEl.children.length>MAX_LOG) logEl.removeChild(logEl.firstChild); };
-  const ok = t => line(t,'ok'), err = t => line(t,'error');
+  // State
+  const S = {
+    minPlayers: 2, maxPlayers: 4, allowedPunc: null,
+    client: null, sub: null, connected: false,
+    roomId: null, myNum: null, host: 1,
+    started: false, joined: 0, current: null, round: null, sequence: '',
+    found: [], leaving: false, lastMyTurn: false,
+    hadDisconnect: false, connErrShown: false, postReconnect: false
+  };
 
-  function setAllowedPunctuation(s){
-    if (typeof s === 'string' && s.length){
-      allowedPuncSet = new Set([...s]);
-    } else {
-      allowedPuncSet = null;
-    }
-  }
+  // Utils
+  const esc = s => (s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const first = s => ([...(s || '')][0] || '');
+  const online = () => !!(S.client && S.connected);
+  const allowedChar = ch => { const c = first(ch); return !!c && (LETTER_RE.test(c) || S.allowedPunc?.has(c)); };
 
-  function firstChar(s){ if(!s) return ''; const a=[...s]; return a.length?a[0]:''; }
-  function isAllowedChar(ch){
-    if(typeof ch!=='string') return false;
-    const a=[...ch]; if(a.length!==1) return false;
-    const c = a[0];
-    return /\p{L}/u.test(c) || (allowedPuncSet && allowedPuncSet.has(c));
-  }
+  // Log
+  const addLine = (t, cls = '') => {
+    const d = document.createElement('div');
+    d.className = `line ${cls}`;
+    d.textContent = t;
+    ui.log.appendChild(d);
+    while (ui.log.children.length > MAX_LOG) ui.log.removeChild(ui.log.firstChild);
+  };
+  const ok = t => addLine(t, 'ok');
+  const err = t => addLine(t, 'error');
 
-  function setConn(ok){ connDot.classList.toggle('connected', !!ok); connStatus.textContent = ok ? 'connected' : 'disconnected'; }
-  function setSeq(s){ seqBadge.textContent = s && s.length ? s : '—'; }
-  function setScores(scores){
-    if (!scores) { scoresBar.textContent='—'; return; }
-    try { const keys=Object.keys(scores).sort((a,b)=>Number(a)-Number(b)); scoresBar.textContent=keys.map(k=>`#${k}:${scores[k]}`).join(' | '); } catch(e){ scoresBar.textContent=JSON.stringify(scores); }
-  }
-  function setRound(v){ roundBadge.textContent = (typeof v==='number' && v>0) ? String(v) : '—'; }
-  function clearBody(){ defCard.classList.add('hidden'); defCard.innerHTML=''; logEl.innerHTML=''; }
+  // UI helpers
+  const setConn = on => {
+    S.connected = !!on;
+    ui.connDot.classList.toggle('connected', on);
+    ui.connStatus.textContent = on ? 'connected' : 'disconnected';
+  };
+  const setSeq = s => { S.sequence = s || ''; ui.seq.textContent = S.sequence || '—'; };
+  const setScores = m => { ui.scores.textContent = m ? Object.keys(m).sort((a,b)=>+a-+b).map(k=>`#${k}:${m[k]}`).join(' | ') : '—'; };
+  const setRound = v => { ui.round.textContent = (typeof v === 'number' && v > 0) ? String(v) : '—'; };
+  const clearBody = () => { ui.def.classList.add('hidden'); ui.def.innerHTML = ''; ui.log.innerHTML = ''; };
+  const setAllowedPunc = s => { S.allowedPunc = s ? new Set([...s]) : null; };
+  const disableAllControls = () => {
+    ui.btnCreate.disabled = ui.btnJoin.disabled = ui.btnPlay.disabled =
+    ui.btnExit.disabled = ui.btnAdd.disabled = ui.joinId.disabled =
+    ui.char.disabled = true;
+  };
 
-  function showDef(word, pts, def){ defCard.innerHTML = `<div class="title">Completed: ${escapeHtml(word)} (+${pts})</div><div>${escapeHtml(def)}</div>`; defCard.classList.remove('hidden'); }
-  function maybeDef(msg){
+  // Domain
+  const showDef = (word, pts, def) => {
+    ui.def.innerHTML = `<div class="title">Completed: ${esc(word)} (+${pts})</div><div>${esc(def || '')}</div>`;
+    ui.def.classList.remove('hidden');
+    S.found.push({ player: null, word, points: pts });
+  };
+
+  const maybeDef = msg => {
     const m = msg.match(/^\*\*\* Player (\d+) completed "(.+?)"! \((\d+) Point/i);
-    const i = msg.indexOf('Definition: ');
     if (!m) return false;
-    const player = Number(m[1]), word = m[2], pts = Number(m[3]||0), def = i>=0 ? msg.slice(i+12).trim() : '';
-    showDef(word, pts, def);
-    foundWords.push({player,word,points:pts});
+    const i = msg.indexOf('Definition: ');
+    const [player, word, pts] = [Number(m[1]), m[2], Number(m[3] || 0)];
+    showDef(word, pts, i >= 0 ? msg.slice(i + 12).trim() : '');
+    S.found[S.found.length - 1].player = player;
     return true;
-  }
+  };
 
-  function showResults(scores, rounds, lastSeq){
-    const es = scores ? Object.entries(scores).map(([k,v])=>({p:Number(k),s:Number(v)})) : [];
-    es.sort((a,b)=>b.s-a.s||a.p-b.p);
-    const top = es.length ? es[0].s : 0;
-    const winners = es.filter(e=>e.s===top);
-    const winnersStr = winners.length ? winners.map(e=>`#${e.p}${e.p===myNum?' (You)':''}`).join(', ') : '';
-    line('Game Over','meta');
-    if (es.length){ line('Final scores:','meta'); es.forEach(e => line(` - Player #${e.p}: ${e.s}`,'meta')); line(`Winner${winners.length>1?'s':''}: ${winnersStr}`,'meta'); } else line('No scores recorded.','meta');
-    if (foundWords.length){ line('Words found:','meta'); foundWords.forEach(w=>line(` - Player #${w.player}: ${w.word} (+${w.points})`,'meta')); }
-    if (typeof rounds==='number') line('Rounds: '+rounds,'meta');
-    if (typeof lastSeq==='string' && lastSeq.length) line('Last sequence: "'+escapeHtml(lastSeq)+'"','meta');
-  }
+  const showResults = (scores, rounds, lastSeq) => {
+    const es = scores ? Object.entries(scores).map(([p, s]) => ({ p:+p, s:+s })) : [];
+    es.sort((a,b) => b.s - a.s || a.p - b.p);
+    const top = es[0]?.s || 0, winners = es.filter(e => e.s === top);
 
-  function sendApp(dest, body){ stomp.send(dest, {}, body ? JSON.stringify(body) : '{}'); }
+    addLine('Game Over', 'meta');
+    if (es.length) {
+      addLine('Final scores:', 'meta');
+      es.forEach(e => addLine(` - Player #${e.p}: ${e.s}`, 'meta'));
+      const w = winners.map(e => `#${e.p}${e.p === S.myNum ? ' (You)' : ''}`).join(', ');
+      addLine(`Winner${winners.length > 1 ? 's' : ''}: ${w}`, 'meta');
+    } else addLine('No scores recorded.', 'meta');
 
-  function subscribeRoom(id){
-    if (subRoom) try{subRoom.unsubscribe()}catch(e){}
-    subRoom = stomp.subscribe('/topic/rooms/'+id, m => { try{ handleRoom(JSON.parse(m.body)); }catch(e){ err('bad room update'); } });
-  }
+    if (S.found.length) {
+      addLine('Words found:', 'meta');
+      S.found.forEach(w => addLine(` - Player #${w.player}: ${w.word} (+${w.points})`, 'meta'));
+    }
+    if (typeof rounds === 'number') addLine('Rounds: ' + rounds, 'meta');
+    if (lastSeq) addLine('Last sequence: "' + esc(lastSeq) + '"', 'meta');
+  };
 
-  function endRoom(clear=false){
-    if (subRoom) try{subRoom.unsubscribe()}catch(e){}
-    roomId=null; myNum=null; started=false; joined=0; current=null; host=1; round=null; foundWords=[];
-    leaving = false;
-    setSeq(''); setScores(null); setRound(null); if (clear) clearBody(); setRoomUI();
-  }
+  // STOMP helpers
+  const publish = (dest, body = {}) => {
+    if (!online()) return err('not connected');
+    S.client.publish({ destination: dest, body: JSON.stringify(body) });
+  };
+  const resubscribeRoom = id => {
+    S.sub?.unsubscribe();
+    S.sub = S.client.subscribe(`/topic/rooms/${id}`, m => {
+      try { handleRoom(JSON.parse(m.body)); } catch { err('bad room update'); }
+    });
+  };
 
-  function handleUser(p){
+  const resetRoom = (clear = false) => {
+    S.sub?.unsubscribe();
+    Object.assign(S, {
+      roomId: null, myNum: null, host: 1, started: false,
+      joined: 0, current: null, round: null, sequence: '',
+      found: [], leaving: false, lastMyTurn: false, postReconnect: false
+    });
+    setSeq(''); setScores(null); setRound(null);
+    if (clear) clearBody();
+    updateUI();
+  };
+
+  // Handlers
+  const handleUser = p => {
     if (!p) return;
-    if (p.type==='room_created'){
+    if (p.type === 'room_created') {
       clearBody();
-      roomId=(p.roomId||'').toUpperCase();
-      myNum=p.playerNumber; started=!!p.started; current=null; host=1; joined=Math.max(1,myNum); round=null;
-      ok(`room ${roomId} — you are player #${myNum}`);
-      setRound(round); setRoomUI(); subscribeRoom(roomId);
-    } else if (p.type==='error') {
-      err(p.message||'error');
+      S.roomId = (p.roomId || '').toUpperCase();
+      S.myNum = p.playerNumber;
+      S.started = !!p.started;
+      S.joined = Math.max(1, S.myNum);
+      S.current = null; S.host = 1; S.round = null;
+      ok(`room ${S.roomId} — you are player #${S.myNum}`);
+      setRound(S.round);
+      updateUI();
+      resubscribeRoom(S.roomId);
+    } else if (p.type === 'error') {
+      err(p.message || 'error');
     }
-  }
+  };
 
-  function handleRoom(u){
+  const handleRoom = u => {
     if (!u) return;
-    const prevStarted = started, prevCur = current;
-    if (typeof u.started==='boolean') started = u.started;
-    if (typeof u.joinedCount==='number') joined = u.joinedCount;
-    if (typeof u.currentPlayer==='number') current = u.currentPlayer;
-    if (typeof u.hostPlayer==='number') host = u.hostPlayer;
-    if (typeof u.roundCount==='number') round = u.roundCount;
+    const wasStarted = S.started;
 
-    if (!prevStarted && started) { clearBody(); foundWords=[]; if (typeof u.roundCount!=='number') round=1; }
+    if ('started' in u) S.started = !!u.started;
+    if ('joinedCount' in u) S.joined = u.joinedCount;
+    if ('currentPlayer' in u) S.current = u.currentPlayer;
+    if ('hostPlayer' in u) S.host = u.hostPlayer;
+    if ('roundCount' in u) S.round = u.roundCount;
 
-    if (Array.isArray(u.messages) && u.messages.length){
+    if (!wasStarted && S.started) { clearBody(); S.found = []; if (!('roundCount' in u)) S.round = 1; }
+
+    if (Array.isArray(u.messages) && u.messages.length) {
       clearBody();
-      u.messages.forEach(m => { if (!maybeDef(m)) line(m); });
+      u.messages.forEach(m => { if (!maybeDef(m)) addLine(m); });
     }
 
-    if (typeof u.sequence==='string') setSeq(u.sequence);
-    if (u.scores) setScores(u.scores);
-    setRound(started?round:null);
-    setRoomUI();
-    if (started && current!==prevCur && current===myNum) setRoomUI();
+    if (wasStarted && !S.started) {
+      showResults(u.scores || {}, u.roundCount, u.sequence);
+      resetRoom(false);
+      return;
+    }
 
-    const endedNow = prevStarted && !started;
-    const endedByMsg = Array.isArray(u.messages) && u.messages.some(m=>/room closed|game ended/i.test(m));
-    if (endedNow || endedByMsg){ showResults(u.scores||null, (typeof u.roundCount==='number'?u.roundCount:round), u.sequence); endRoom(); }
-  }
+    if (!S.started && Array.isArray(u.messages) && u.messages.some(m => /room closed/i.test(m))) {
+      resetRoom(false);
+      return;
+    }
 
-  function connect(){
-    const sock = new SockJS('/ws'); stomp = Stomp.over(sock); stomp.debug = null;
-    stomp.connect({}, () => {
-      setConn(true);
-      stomp.subscribe('/user/queue/reply', m => { try{ handleUser(JSON.parse(m.body)); }catch(e){ err('bad user reply'); } });
-      setRoomUI();
-    }, () => { setConn(false); err('connection error'); });
-  }
+    if (u.scores && S.started) {
+      setScores(u.scores);
+      if (S.started) { try { S.joined = Object.keys(u.scores).length; } catch {} }
+    }
+    if (typeof u.sequence === 'string') setSeq(u.sequence);
 
-  function setRoomUI(){
-    const capStr = (typeof maxPlayers === 'number') ? maxPlayers : '—';
-    const code = roomId ? roomId.toUpperCase() : '—';
-    roomInfo.textContent = `room: ${code} | ${myNum?('you #'+myNum):'—'} | players: ${(typeof joined==='number'?joined:'?')}/${capStr} | ${started?'started':'not started'}`;
-    const inRoom = !!roomId;
-    lobby.classList.toggle('hidden', inRoom);
-    roomCtl.classList.toggle('hidden', !inRoom);
-    if (inRoom) joinRoomId.value = '';
-    btnPlay.classList.toggle('hidden', !inRoom || started);
-    termInput.classList.toggle('hidden', !inRoom || !started);
-    btnAdd.classList.toggle('hidden', !inRoom || !started);
+    const myTurn = !!(S.started && S.current === S.myNum);
+    if (myTurn && !S.lastMyTurn) {
+      ui.char.value = '';
+      setTimeout(() => { try { ui.char.focus(); } catch {} }, 0);
+    }
+    S.lastMyTurn = myTurn;
 
-    const canStart = inRoom && myNum===host && !started && (typeof minPlayers==='number' ? joined>=minPlayers : joined>=2) && (typeof maxPlayers==='number' ? joined<maxPlayers : true);
-    btnPlay.disabled = !canStart;
+    setRound(S.started ? S.round : null);
+    updateUI();
+  };
 
-    const myTurn = inRoom && started && myNum!=null && current===myNum;
-    btnAdd.disabled = !myTurn;
-    charInput.disabled = !myTurn;
-    if (myTurn && !termInput.classList.contains('hidden')) setTimeout(()=>charInput.focus(),0);
+  const updateUI = () => {
+    const inRoom = !!S.roomId;
+    const cap = (typeof S.maxPlayers === 'number') ? S.maxPlayers : '—';
+    const myTurn = inRoom && S.started && online() && S.current === S.myNum;
 
-    btnExit.disabled = !!leaving || !inRoom;
+    ui.roomInfo.textContent =
+      `room: ${inRoom ? S.roomId : '—'} | ${S.myNum ? ('you #' + S.myNum) : '—'} | ` +
+      `players: ${(typeof S.joined === 'number' ? S.joined : '?')}/${cap} | ${S.started ? 'started' : 'not started'}`;
+
+    ui.lobby.classList.toggle('hidden', inRoom);
+    ui.roomCtl.classList.toggle('hidden', !inRoom);
+    if (inRoom) ui.joinId.value = '';
+    ui.btnPlay.classList.toggle('hidden', !inRoom || S.started);
+    ui.term.classList.toggle('hidden', !inRoom || !S.started);
+    ui.btnAdd.classList.toggle('hidden', !inRoom || !S.started);
+
+    if (!S.connected) {
+      disableAllControls();
+      ui.status.textContent = 'attempting to connect…';
+      document.documentElement.classList.toggle('dark', false);
+      return;
+    }
+
+    if (S.postReconnect && inRoom) {
+      ui.btnExit.disabled = false;
+      ui.status.textContent = 'Reconnected. Press Exit to start a new game.';
+      return;
+    }
+
+    const minP = (typeof S.minPlayers === 'number') ? S.minPlayers : 2;
+    const maxP = (typeof S.maxPlayers === 'number') ? S.maxPlayers : 4;
+    ui.btnPlay.disabled = !(inRoom && online() && S.myNum === S.host && !S.started && S.joined >= minP && S.joined < maxP);
+    ui.btnAdd.disabled = !myTurn;
+    ui.char.disabled = !myTurn;
+    ui.btnExit.disabled = !!S.leaving || !inRoom || !online();
+
+    ui.btnCreate.disabled = !online() || inRoom;
+    ui.btnJoin.disabled = !online() || inRoom;
+    ui.joinId.disabled = !online() || inRoom;
 
     if (!inRoom) {
-      statusRight.textContent = 'not in a room';
-    } else if (!started) {
-      if (myNum===host) {
-        const min = typeof minPlayers==='number' ? minPlayers : 2;
-        const max = typeof maxPlayers==='number' ? maxPlayers : '?';
-        statusRight.textContent = `waiting for players; Play at ${min}–${(typeof max==='number' ? max-1 : '?')}; auto-start at ${max}`;
-      } else {
-        const max = typeof maxPlayers==='number' ? maxPlayers : '?';
-        statusRight.textContent = `waiting for host; auto-start at ${max}`;
-      }
+      ui.status.textContent = 'not in a room';
+    } else if (!S.started) {
+      ui.status.textContent = (S.myNum === S.host)
+        ? `waiting for players; Play at ${minP}–${maxP - 1}; auto-start at ${maxP}`
+        : `waiting for host; auto-start at ${maxP}`;
     } else {
-      statusRight.textContent = (myTurn ? 'your turn' : 'waiting for other players');
+      ui.status.textContent = myTurn ? 'your turn' : 'waiting for other players';
     }
 
-    document.documentElement.classList.toggle('dark', !!(started && !myTurn));
-  }
-
-  btnCreate.onclick = () => { if(!stomp) return err('not connected'); sendApp('/app/createRoom'); };
-  btnJoin.onclick = () => {
-    if(!stomp) return err('not connected');
-    const rid = (joinRoomId.value||'').trim().toUpperCase();
-    if(!rid) return err('enter room code');
-    sendApp('/app/joinRoom',{roomId:rid});
-  };
-  btnPlay.onclick = () => { if(!stomp) return err('not connected'); if(!roomId) return err('not in a room'); sendApp('/app/start',{roomId}); };
-
-  btnExit.onclick = () => {
-    if(!stomp) return err('not connected');
-    if(!roomId) return err('not in a room');
-    if (!started) { sendApp('/app/exit',{}); endRoom(true); return; }
-    leaving = true;
-    sendApp('/app/exit', {});
-    btnAdd.disabled = charInput.disabled = btnPlay.disabled = true;
-    setRoomUI();
-    statusRight.textContent = 'leaving…';
+    document.documentElement.classList.toggle('dark', !!(S.started && !myTurn));
   };
 
-  btnAdd.onclick = () => {
-    if(!stomp) return err('not connected');
-    if(!roomId) return err('not in a room');
-    const chRaw = firstChar(charInput.value || '');
-    if(!isAllowedChar(chRaw)) {
-      const extra = allowedPuncSet ? ` or one of "${[...allowedPuncSet].join('')}"` : '';
+  // Actions
+  ui.btnCreate.onclick = () => online() && publish('/app/createRoom');
+  ui.btnJoin.onclick = () => {
+    if (!online()) return err('not connected');
+    const rid = (ui.joinId.value || '').trim().toUpperCase();
+    if (!rid) return err('enter room code');
+    publish('/app/joinRoom', { roomId: rid });
+  };
+  ui.btnPlay.onclick = () => {
+    if (!online() || !S.roomId) return err(!online() ? 'not connected' : 'not in a room');
+    publish('/app/start', { roomId: S.roomId });
+  };
+  ui.btnExit.onclick = () => {
+    if (S.postReconnect) { S.connErrShown = false; resetRoom(true); updateUI(); return; }
+    if (!online() || !S.roomId) return err(!online() ? 'not connected' : 'not in a room');
+    if (!S.started) { publish('/app/exit'); resetRoom(true); return; }
+    S.leaving = true;
+    publish('/app/exit');
+    ui.status.textContent = 'leaving…';
+    updateUI();
+  };
+  ui.btnAdd.onclick = () => {
+    if (!online() || !S.roomId) return err(!online() ? 'not connected' : 'not in a room');
+    const ch = first(ui.char.value || '');
+    if (!allowedChar(ch)) {
+      const extra = S.allowedPunc ? ` or one of "${[...S.allowedPunc].join('')}"` : '';
       return err(`invalid character: enter a single letter${extra}`);
     }
-    const ch = chRaw.toLowerCase();
-    sendApp('/app/addCharacter',{roomId,ch});
-    charInput.value = '';
-    charInput.focus();
+    publish('/app/addCharacter', { roomId: S.roomId, ch: ch.toLowerCase() });
+    ui.char.value = '';
+    ui.char.focus();
   };
 
-  joinRoomId.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); btnJoin.click(); } });
-  charInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); btnAdd.click(); } });
+  ui.joinId.addEventListener('input', updateUI);
+  ui.joinId.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); ui.btnJoin.click(); } });
+  ui.char.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); ui.btnAdd.click(); } });
 
-  function loadConfigAndStart(){
-    fetch('/config').then(r=>{
-      if (!r.ok) throw new Error('config fetch failed');
-      return r.json();
-    }).then(cfg=>{
-      if (cfg && typeof cfg.minPlayers==='number') minPlayers = cfg.minPlayers;
-      if (cfg && typeof cfg.maxPlayers==='number') maxPlayers = cfg.maxPlayers;
-      if (cfg && typeof cfg.allowedPunctuation==='string') setAllowedPunctuation(cfg.allowedPunctuation);
-      else setAllowedPunctuation(null);
-    }).catch(e=>{
-      minPlayers = 2; maxPlayers = 4;
-      setAllowedPunctuation(null);
-      err('Unable to load server config, using defaults 2..4; punctuation is unset until server provides it');
-    }).finally(connect);
-  }
+  // Connection events
+  const handleDisconnected = () => {
+    setConn(false);
+    S.hadDisconnect = true;
+    if (S.roomId && !S.connErrShown) {
+      err('Connection lost. You cannot continue this game. After reconnection, press Exit to start a new game.');
+      S.connErrShown = true;
+    }
+    updateUI();
+  };
 
-  window.addEventListener('load', loadConfigAndStart);
-  window.addEventListener('beforeunload', ()=>{ try{ stomp && sendApp('/app/exit',{});}catch(e){} try{ stomp && stomp.disconnect(); }catch(e){} });
+  // Connect + config
+  const connect = () => {
+    const wsScheme = location.protocol === 'https:' ? 'wss' : 'ws';
+    S.client = new Client({
+      brokerURL: `${wsScheme}://${location.host}/ws`,
+      heartbeatIncoming: HB, heartbeatOutgoing: HB, debug: () => {},
+      reconnectDelay: 3000
+    });
+
+    S.client.onConnect = () => {
+      setConn(true);
+      if (S.hadDisconnect) {
+        if (S.roomId) S.postReconnect = true;
+        S.hadDisconnect = false;
+      }
+      S.client.subscribe('/user/queue/reply', m => {
+        try { handleUser(JSON.parse(m.body)); } catch { err('bad user reply'); }
+      });
+      updateUI();
+    };
+
+    S.client.onWebSocketError = handleDisconnected;
+    S.client.onWebSocketClose = handleDisconnected;
+    S.client.onStompError = f => err(f?.headers?.message || 'broker error');
+
+    S.client.activate();
+  };
+
+  const boot = async () => {
+    try {
+      const r = await fetch('/config');
+      if (!r.ok) throw 0;
+      const c = await r.json();
+      if (typeof c.minPlayers === 'number') S.minPlayers = c.minPlayers;
+      if (typeof c.maxPlayers === 'number') S.maxPlayers = c.maxPlayers;
+      setAllowedPunc(typeof c.allowedPunctuation === 'string' ? c.allowedPunctuation : null);
+    } catch {
+      S.minPlayers = 2; S.maxPlayers = 4; setAllowedPunc(null);
+      err('Unable to load server config, using defaults 2–4; punctuation disabled until server provides it');
+    } finally {
+      connect();
+    }
+  };
+
+  window.addEventListener('load', boot);
+  window.addEventListener('beforeunload', () => {
+    try {
+      if (S.client && S.connected && !S.postReconnect) {
+        S.client.publish({ destination:'/app/exit', body:'{}' });
+      }
+    } catch {}
+    try { S.client?.deactivate(); } catch {}
+  });
 </script>
 </body>
 </html>

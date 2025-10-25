@@ -51,15 +51,11 @@ public class DictionaryService implements Dictionary {
    * <p>Exposed as a record to make it easy to map JSON objects into this structure via Jackson.
    *
    * @param gloss human readable definition text for this sense
-   * @param tags optional tags associated with the sense (e.g., usage notes)
+   * @param tags optional tags associated with the sense (e.g., "archaic", etc.)
    */
   public record Sense(String gloss, List<String> tags) {}
 
-  /**
-   * Create a {@code DictionaryService} backed by the given JSON resource.
-   *
-   * @param file Spring {@link Resource} pointing to the dictionary JSON file (must not be null)
-   */
+  /** Create a {@code DictionaryService} backed by the given JSON resource. */
   public DictionaryService(@Value("${spellchain.dictionary-path}") Resource file) {
     this.file = Objects.requireNonNull(file);
   }
@@ -172,14 +168,7 @@ public class DictionaryService implements Dictionary {
     n.def = def;
   }
 
-  /**
-   * Normalize a word for storage and lookup.
-   *
-   * <p>Current behavior lower-cases using {@link Locale#ROOT}.
-   *
-   * @param s input string
-   * @return normalized string (never null if input was non-null)
-   */
+  /** Normalize a word for storage and lookup. */
   private static String normalize(String s) {
     return s.toLowerCase(LOCALE);
   }
@@ -241,14 +230,7 @@ public class DictionaryService implements Dictionary {
     return sb.length() == 0 ? NO_DEF : sb.toString();
   }
 
-  /**
-   * Truncate a string to the given maximum length, appending an ellipsis character if truncated.
-   *
-   * @param s input string
-   * @param max maximum allowed length (including the ellipsis if truncation occurs)
-   * @return the original string if it fits within {@code max}, otherwise a truncated string
-   *     ending with a Unicode ellipsis
-   */
+  /** Truncate a string to the given maximum length, appending an ellipsis character if truncated */
   private static String truncate(String s, int max) {
     if (s == null || s.length() <= max) return s;
     return s.substring(0, Math.max(0, max - 1)) + "…";

@@ -97,7 +97,7 @@ public class GameService {
     }
     publisher.publish(b);
     log.info("Created room {} host #1", id);
-    return new RoomCreatedMessage(id, 1, room.capacity(), room.started());
+    return new RoomCreatedMessage(id, 1, room.started());
   }
 
   /**
@@ -125,13 +125,13 @@ public class GameService {
       removePlayerBySession(sid);
     }
 
-    // If already mapped to this room and still present → idempotent reply
+    // If already mapped to this room and still present -> idempotent reply
     if (id.equals(sessionRoom.get(sid))) {
       room.lock().lock();
       try {
         int existing = playerNum(room, sid);
         if (existing > 0) {
-          return new RoomCreatedMessage(id, existing, room.capacity(), room.started());
+          return new RoomCreatedMessage(id, existing, room.started());
         }
         // Stale mapping: clean and proceed to join fresh
         sessionRoom.remove(sid);
@@ -165,7 +165,7 @@ public class GameService {
       }
 
       toPublish = GameBroadcast.of(id, snap(room)).withMessages(msgs);
-      reply = new RoomCreatedMessage(id, num, room.capacity(), room.started());
+      reply = new RoomCreatedMessage(id, num, room.started());
       log.info("Session {} joined room {} as #{}", sid, id, num);
     } finally {
       room.lock().unlock();

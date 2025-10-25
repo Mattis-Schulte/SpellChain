@@ -13,7 +13,6 @@ public record GameUpdateMessage(
     Map<Integer, Integer> scores,
     Integer roundCount,
     Boolean started,
-    Integer playerCount,
     Integer joinedCount,
     Integer hostPlayer) {
 
@@ -28,7 +27,6 @@ public record GameUpdateMessage(
         null,
         null,
         started,
-        cap,
         joined,
         host);
   }
@@ -44,15 +42,22 @@ public record GameUpdateMessage(
         scores,
         roundCount,
         started,
-        playerCount,
         joinedCount,
         hostPlayer);
   }
 
-  public GameUpdateMessage withSnapshot(
-      int cur, String seq, Map<Integer, Integer> sc, int round) {
+  public GameUpdateMessage withSnapshot(int cur, String seq, Map<Integer, Integer> sc, int round) {
     return new GameUpdateMessage(
-        type, player, ch, messages, cur, seq, sc, round, started, playerCount, joinedCount,
+        type,
+        player,
+        ch,
+        messages,
+        cur,
+        seq,
+        sc,
+        round,
+        started,
+        joinedCount,
         hostPlayer);
   }
 
@@ -67,7 +72,6 @@ public record GameUpdateMessage(
         scores,
         roundCount,
         started,
-        playerCount,
         joinedCount,
         hostPlayer);
   }
