@@ -1,20 +1,20 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"/>
-  <meta name="description" content="SpellChain is a demo Spring Boot application showcasing real-time WebSockets (STOMP) and a lightweight browser UI. It's a 2–4 player word game where players create/join rooms, add letters, complete dictionary-backed words, and see live updates." />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+  <meta name="description" content="SpellChain is a demo Spring Boot application showcasing real-time WebSockets (STOMP) and a lightweight browser UI. It's a 2–4 player word game where players create/join rooms, add letters, complete dictionary-backed words, and see live updates.">
   <title>SpellChain — A Spring Boot Demo</title>
   <style>
     :root{--fg:#000;--bg:#fff;--muted:#333;--error:#b00000;--ok:#064;--bd:#000;--disabled:#999}
     .dark{--fg:#fff;--bg:#000;--muted:#bbb;--error:#ff8a8a;--ok:#8f8;--bd:#fff}
 
-    html,body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.4 Consolas,monospace;height:auto;min-height:100vh;min-height:100svh}
+    html,body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.4 Consolas,monospace;height:auto;min-height:100vh;min-height:100dvh}
     body{display:flex;align-items:center;justify-content:center}
 
     .panel{
       --panel-h:min(560px, calc(100vh - 69px));
-      --panel-h:min(560px, calc(100svh - 69px));
+      --panel-h:min(560px, calc(100dvh - 69px));
 
       width:min(860px,calc(100vw - 24px));
       height:var(--panel-h);
@@ -24,7 +24,7 @@
       flex-direction:column;
 
       transform:translateY(calc(-1 * min(8vh, max(0px, calc((100vh - var(--panel-h)) / 2 - 12px)))));
-      transform:translateY(calc(-1 * min(8svh, max(0px, calc((100svh - var(--panel-h)) / 2 - 12px)))));
+      transform:translateY(calc(-1 * min(8dvh, max(0px, calc((100dvh - var(--panel-h)) / 2 - 12px)))));
 
       margin:0 env(safe-area-inset-right) 0 env(safe-area-inset-left);
       box-sizing:border-box;
@@ -61,6 +61,7 @@
     .btn{padding:6px 10px}
     .btn[disabled]{color:var(--disabled);border-color:var(--disabled)}
     .input{padding:6px 8px}
+    .input:disabled{border-color:var(--disabled)}
     .hidden{display:none}
     #log{flex:1 1 auto}
     .github-link{position:fixed;left:50%;transform:translateX(-50%);bottom:12px;padding:8px 12px;font-size:13px;color:var(--fg);z-index:1000;opacity:.92;white-space:nowrap}
@@ -70,7 +71,7 @@
       .panel{
         width:100%;
         height:calc(100vh - 66px);
-        height:calc(100svh - 66px);margin:8px calc(env(safe-area-inset-right) + 8px) 8px calc(env(safe-area-inset-left) + 8px);transform:none
+        height:calc(100dvh - 66px);margin:8px calc(env(safe-area-inset-right) + 8px) 8px calc(env(safe-area-inset-left) + 8px);transform:none
       }
       .header,.stats,.body,.footer{padding:12px}
       .dot{width:12px;height:12px}
@@ -103,14 +104,14 @@
     <div id="log"></div>
     <div id="termInput" class="term-input hidden">
       <div class="prompt">&gt;</div>
-      <input id="charInput" maxlength="1" inputmode="text" placeholder="enter a character" autocomplete="off"/>
+      <input id="charInput" maxlength="1" inputmode="text" placeholder="enter a character" autocomplete="off">
     </div>
   </div>
 
   <div class="footer">
     <div class="row" id="lobbyControls">
       <button class="btn" id="btnCreate">Create</button>
-      <input class="input" id="joinRoomId" placeholder="ROOMID" style="width:120px"/>
+      <input class="input" id="joinRoomId" placeholder="ROOMID" style="width:120px">
       <button class="btn" id="btnJoin">Join</button>
     </div>
 
