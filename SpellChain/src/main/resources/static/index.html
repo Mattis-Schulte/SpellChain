@@ -61,7 +61,6 @@
     .btn{padding:6px 10px}
     .btn[disabled]{color:var(--disabled);border-color:var(--disabled)}
     .input{padding:6px 8px}
-    .input:disabled{border-color:var(--disabled)}
     .hidden{display:none}
     #log{flex:1 1 auto}
     .github-link{position:fixed;left:50%;transform:translateX(-50%);bottom:12px;padding:8px 12px;font-size:13px;color:var(--fg);z-index:1000;opacity:.92;white-space:nowrap}
@@ -215,7 +214,7 @@
   const showDef = (word, pts, def) => {
     ui.def.innerHTML = `
       <div class="title">Completed: ${esc(word)} (+${pts})</div>
-      <div>${esc(def || '').replace(/\bhttps?:\/\/[^\s<>"']+/gi, u => `<a href="${u}" target="_blank" rel="noopener noreferrer">${u}</a>`)}</div>
+      <div>${esc(def || '').replace(/\bhttps?:\/\/[^\s<>"')\]\[]+[^\s<>"').,!?;\]:\]]/gi, u => `<a href="${u}" target="_blank" rel="noopener noreferrer">${u}</a>`)}</div>
     `;
     ui.def.classList.remove('hidden');
     S.found.push({ player: null, word, points: pts });

@@ -31,7 +31,7 @@ The rules of \textit{SpellChain} are designed to keep the game fair while also e
     \]
     For instance, completing the word \textit{"javanese"} (eight letters) would earn the player four points.
     \item \textbf{Preventing Word Reuse:} After a word has been successfully completed and points have been awarded to a player, it cannot be used again by any player during the game. This rule encourages players to be inventive and strategic in their word choices.
-    \item \textbf{Handling Invalid Sequences:} If a player adds a letter or punctuation mark that doesn't match any prefix in the dictionary, the sequence resets, a new round starts, and the turn passes to the next player. For example, if the sequence becomes \textit{"zz"}, which isn't the start of any English word, the sequence resets.
+    \item \textbf{Handling Invalid Sequences:} If a player adds a letter or punctuation mark that doesn't match any prefix in the dictionary, the sequence resets, a new round starts, and the turn passes to the next player. For example, if the sequence becomes \textit{"zzz"}, which isn't the start of any English word, the sequence resets.
     \item \textbf{Exiting the Game:} At any point, a player can leave the room using the UI, which ends an ongoing game and broadcasts a summary (see below).
 \end{enumerate}
 After each move, the game will display the current sequence, all players' scores, and the current round to keep everyone updated on the game's progress.
@@ -42,7 +42,7 @@ The game does not enforce a predefined win condition, allowing players to play i
 \section*{Implementation Highlights}
 \textit{SpellChain} is now implemented using Java and Spring Boot, while preserving the original smooth and enjoyable game mechanics:
 \begin{enumerate}
-    \item \textbf{Concurrent Trie Dictionary:} The dictionary is loaded into a thread-safe trie at startup. Each node represents a character, enabling fast prefix and word checks. Definitions are stored per word, and multiple definitions are merged. This ensures responsiveness with large datasets like the English-language Wiktionary.
+    \item \textbf{SQLite-backed read-only dictionary:} Instead of an in-memory trie, the game uses a read-only SQLite database that contains the word list and definitions. The server opens it at startup and performs fast, normalized checks for words and prefixes; lookups are safe for multiple players.
     \item \textbf{WebSockets (STOMP) with Spring Boot:} Real-time updates are delivered over STOMP on raw WebSockets. The server exposes message mappings for creating/joining rooms, starting games, adding characters, and exiting. Game state is broadcast to \texttt{/topic/rooms/\{roomId\}}, and per-user replies (e.g., errors, room creation) are sent to \texttt{/user/queue/reply}.
     \item \textbf{Browser-Based Interface:} The console interface has been replaced by a lightweight web UI. Players can create or join rooms, start the game (host), add characters on their turn, and exit the room. The interface shows the live sequence, scores, round count, system messages, and definitions for completed words.
 \end{enumerate}

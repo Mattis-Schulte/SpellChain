@@ -5,7 +5,7 @@ spellchain:
   min-players: 2
   max-players: 4
   allowed-punctuation: "-'/ ."
-  dictionary-path: classpath:wiktionary_english_dictionary.json
+  dictionary-jdbc-url: "jdbc:sqlite:./data/wiktionary_english_dictionary.sqlite"
   allowed-origins: "https://spellchain.mattisschulte.io"
 
 spring:

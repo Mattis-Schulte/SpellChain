@@ -1,99 +1,104 @@
 package com.spellchain.infrastructure;
 
-import com.fasterxml.jackson.core.JsonToken;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.spellchain.application.port.Dictionary;
 import jakarta.annotation.PostConstruct;
-import java.io.InputStream;
-import java.util.*;
+import jakarta.annotation.PreDestroy;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.sql.*;
+import java.util.Locale;
+import java.util.Objects;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
+import org.sqlite.SQLiteConfig;
+import org.sqlite.SQLiteOpenMode;
 
 /**
- * Implementation of a simple dictionary backed by an in-memory trie.
+ * Dictionary implementation backed by a read-only SQLite database.
  *
- * <p>This service loads a JSON dictionary file on construction (after Spring initializes the bean).
- * Loaded entries are normalized to lower-case (Locale.ROOT) and inserted into a trie for fast
- * prefix and exact-word queries. Definitions are formatted from the senses and truncated to a
- * configured maximum length.
+ * <p>This service opens a read-only JDBC connection to an existing SQLite dictionary and performs
+ * all lookups via parameterized SQL queries for safety and simplicity. Inputs are normalized to
+ * lower-case (Locale.ROOT). Prefix queries use SQLite LIKE with an explicit ESCAPE clause, and user
+ * input is escaped to avoid wildcard interpretation.
  */
 @Service
 public class DictionaryService implements Dictionary {
-  /**
-   * JSON resource file containing the dictionary data. Provided via Spring property
-   * {@code spellchain.dictionary-path}.
-   */
-  private final Resource file;
-  /** Root node of the trie storing words and definitions. */
-  private final TrieNode root = new TrieNode();
+  private static final Logger log = LoggerFactory.getLogger(DictionaryService.class);
 
-  private static final ObjectMapper MAPPER = new ObjectMapper();
-  private static final int DEF_MAX = 500;
-  private static final Locale LOCALE = Locale.ROOT;
-  private static final String NO_DEF = "No definition available.";
+  private static final String SQL_IS_WORD = "SELECT 1 FROM dict WHERE word = ? LIMIT 1";
+  private static final String SQL_HAS_PREFIX = "SELECT 1 FROM dict WHERE word LIKE ? ESCAPE '\\' LIMIT 1";
+  private static final String SQL_DEF_BY_WORD = "SELECT def FROM dict WHERE word = ?";
 
-  /**
-   * Internal trie node representation.
-   *
-   * <p>Children are stored in a map keyed by character. If {@code def} is non-null the node
-   * represents a complete word and {@code def} contains its formatted definition.
-   */
-  private static final class TrieNode {
-    Map<Character, TrieNode> kids;
-    String def;
+  private final String jdbcUrl;
+  private final Object lock = new Object();
+  
+  private Connection conn;
+
+  public DictionaryService(@Value("${spellchain.dictionary-jdbc-url}") String jdbcUrl) {
+    this.jdbcUrl = Objects.requireNonNull(jdbcUrl, "spellchain.dictionary-jdbc-url");
   }
 
   /**
-   * Representation of a dictionary sense (a gloss and optional tags).
+   * Open a read-only SQLite connection and apply conservative PRAGMAs.
    *
-   * <p>Exposed as a record to make it easy to map JSON objects into this structure via Jackson.
+   * <p>If the JDBC URL points to a file path, the file's existence is verified. The connection is
+   * configured as read-only and set to auto-commit. The following PRAGMAs are set:
+   * - query_only=ON
+   * - busy_timeout=3000
+   * - temp_store=MEMORY
+   * - mmap_size=134217728
+   * - cache_size=20000
    *
-   * @param gloss human readable definition text for this sense
-   * @param tags optional tags associated with the sense (e.g., "archaic", etc.)
-   */
-  public record Sense(String gloss, List<String> tags) {}
-
-  /** Create a {@code DictionaryService} backed by the given JSON resource. */
-  public DictionaryService(@Value("${spellchain.dictionary-path}") Resource file) {
-    this.file = Objects.requireNonNull(file);
-  }
-
-  /**
-   * Load the dictionary file into the trie.
-   *
-   * <p>This method is invoked by the container after construction ({@link PostConstruct}). It
-   * parses the JSON resource, normalizes words, cleans sense data, formats definitions and inserts
-   * them into the trie.
-   *
-   * @throws Exception if the file cannot be read or parsed
+   * @throws Exception if connection or configuration fails
    */
   @PostConstruct
   public void load() throws Exception {
-    if (!file.exists()) throw new IllegalStateException("Dictionary not found: " + file);
-
-    try (InputStream in = file.getInputStream(); var p = MAPPER.createParser(in)) {
-      if (p.nextToken() != JsonToken.START_OBJECT) {
-        throw new IllegalStateException("Expected root JSON object");
-      }
-      while (p.nextToken() != JsonToken.END_OBJECT) {
-        String rawWord = p.getCurrentName();
-        p.nextToken();
-
-        Map<String, List<Sense>> posMap =
-            MAPPER.readValue(p, new TypeReference<Map<String, List<Sense>>>() {});
-
-        if (rawWord == null || posMap == null) continue;
-
-        String word = normalize(rawWord);
-        Map<String, List<Sense>> cleaned = cleanPosMap(posMap);
-
-        if (!cleaned.isEmpty()) {
-          String def = truncate(format(cleaned), DEF_MAX);
-          insertWord(word, def);
+    long t0 = System.nanoTime();
+    try {
+      if (jdbcUrl.startsWith("jdbc:sqlite:")) {
+        String path = jdbcUrl.substring("jdbc:sqlite:".length());
+        if (!path.startsWith(":")) {
+          Path db = Path.of(path).toAbsolutePath().normalize();
+          if (Files.notExists(db)) throw new IllegalStateException("Dictionary DB not found: " + db);
         }
       }
+
+      SQLiteConfig cfg = new SQLiteConfig();
+      cfg.setReadOnly(true);
+      cfg.setOpenMode(SQLiteOpenMode.READONLY);
+
+      conn = DriverManager.getConnection(jdbcUrl, cfg.toProperties());
+      conn.setReadOnly(true);
+      conn.setAutoCommit(true);
+
+      try (Statement s = conn.createStatement()) {
+        s.execute("PRAGMA query_only=ON");
+        s.execute("PRAGMA busy_timeout=3000");
+        s.execute("PRAGMA temp_store=MEMORY");
+        s.execute("PRAGMA mmap_size=134217728");
+        s.execute("PRAGMA cache_size=20000");
+      }
+
+      long ms = (System.nanoTime() - t0) / 1_000_000;
+      log.info("Dictionary DB ready ({} ms). Using SQL lookups only.", ms);
+    } catch (Exception e) {
+      close();
+      throw e;
+    }
+  }
+
+  /** Close the SQLite connection.*/
+  @PreDestroy
+  public void close() {
+    synchronized (lock) {
+      try {
+        if (conn != null) conn.close();
+      } catch (Exception ignore) {
+        // ignore
+      }
+      conn = null;
     }
   }
 
@@ -101,138 +106,100 @@ public class DictionaryService implements Dictionary {
    * Check whether the provided string is a known dictionary word.
    *
    * @param w string to check (may be null)
-   * @return true if {@code w} corresponds to an inserted word (case-insensitive), false otherwise
+   * @return true if an word match exists
    */
   @Override
   public boolean isWord(String w) {
-    if (w == null) return false;
-    TrieNode n = node(normalize(w));
-    return n != null && n.def != null;
+    String word = norm(w);
+    if (word == null) return false;
+    return exists(SQL_IS_WORD, word, "isWord");
   }
 
   /**
    * Check whether the provided string is a prefix of any word in the dictionary.
    *
    * @param p prefix to check (may be null)
-   * @return true if there exists at least one word in the dictionary that begins with {@code p}
+   * @return true if there exists a word that begins with the given prefix
    */
   @Override
   public boolean hasPrefix(String p) {
-    if (p == null) return false;
-    TrieNode n = node(normalize(p));
-    return n != null && n.kids != null && !n.kids.isEmpty();
+    String prefix = norm(p);
+    if (prefix == null) return false;
+    String like = escapeLike(prefix) + "_%";
+    return exists(SQL_HAS_PREFIX, like, "hasPrefix");
   }
 
   /**
-   * Retrieve the formatted definition for the given word.
+   * Retrieve the definition for the given word.
    *
    * @param w word to look up (may be null)
-   * @return formatted definition if the word exists, otherwise a {@code "No definition available."}
-   *     placeholder
+   * @return definition string or a "No definition available." placeholder
    */
   @Override
   public String definition(String w) {
-    if (w == null) return NO_DEF;
-    TrieNode n = node(normalize(w));
-    return (n == null || n.def == null) ? NO_DEF : n.def;
+    String word = norm(w);
+    if (word == null) return null;
+    return queryString(SQL_DEF_BY_WORD, word, "definition");
   }
 
-  /**
-   * Traverse the trie to the node corresponding to the given normalized string.
-   *
-   * @param s normalized string (must already be lower-cased)
-   * @return the trie node for {@code s}, or {@code null} if no such node exists
+  /** 
+   * Execute a simple existence check returning true if at least one row matches.
+   * 
+   * @param sql SQL query with one parameter
+   * @param param parameter value
+   * @param op operation name for logging
+   * @return true if at least one row matches
    */
-  private TrieNode node(String s) {
-    TrieNode n = root;
-    for (int i = 0; i < s.length() && n != null; i++) {
-      n = (n.kids == null) ? null : n.kids.get(s.charAt(i));
-    }
-    return n;
-  }
-
-  /**
-   * Insert a word and its definition into the trie.
-   *
-   * <p>If intermediate nodes are missing they will be created.
-   *
-   * @param word normalized word to insert (must already be lower-cased)
-   * @param def formatted definition to associate with the word
-   */
-  private void insertWord(String word, String def) {
-    TrieNode n = root;
-    for (char c : word.toCharArray()) {
-      if (n.kids == null) n.kids = new HashMap<>(2);
-      n = n.kids.computeIfAbsent(c, k -> new TrieNode());
-    }
-    n.def = def;
-  }
-
-  /** Normalize a word for storage and lookup. */
-  private static String normalize(String s) {
-    return s.toLowerCase(LOCALE);
-  }
-
-  /**
-   * Clean raw JSON-parsed part-of-speech map into a safe structure.
-   *
-   * <p>Removes nulls, replaces null glosses/tags with safe defaults, and drops empty glosses.
-   *
-   * @param posMap raw map parsed from JSON (pos -> list of senses)
-   * @return cleaned map containing only positions with at least one valid sense
-   */
-  private static Map<String, List<Sense>> cleanPosMap(Map<String, List<Sense>> posMap) {
-    Map<String, List<Sense>> cleaned = new HashMap<>();
-    posMap.forEach((pos, senses) -> {
-      if (pos == null) return;
-      List<Sense> list = (senses == null ? List.<Sense>of() : senses).stream()
-          .filter(Objects::nonNull)
-          .map(s -> new Sense(
-              s.gloss() == null ? "" : s.gloss(),
-              s.tags() == null ? List.of() : List.copyOf(s.tags())))
-          .filter(s -> !s.gloss().isBlank())
-          .toList();
-      if (!list.isEmpty()) cleaned.put(pos, list);
-    });
-    return cleaned;
-  }
-
-  /**
-   * Format a cleaned pos->senses map into a readable single-line definition string.
-   *
-   * <p>Parts-of-speech are sorted (TreeMap). Each sense is numbered within its POS and tags are
-   * appended in square brackets if present. Different parts of speech are separated by " | " and
-   * senses within a POS are separated by " ; ".
-   *
-   * @param byPos cleaned map of parts-of-speech to senses
-   * @return formatted definition string or the {@link #NO_DEF} placeholder if no senses exist
-   */
-  private static String format(Map<String, List<Sense>> byPos) {
-    StringBuilder sb = new StringBuilder();
-    boolean firstPos = true;
-    for (Map.Entry<String, List<Sense>> e : new TreeMap<>(byPos).entrySet()) {
-      List<Sense> senses = e.getValue();
-      if (senses == null || senses.isEmpty()) continue;
-
-      if (!firstPos) sb.append(" | ");
-      firstPos = false;
-      sb.append(e.getKey()).append(": ");
-
-      for (int i = 0; i < senses.size(); i++) {
-        Sense s = senses.get(i);
-        if (i > 0) sb.append(" ; ");
-        sb.append(i + 1).append(". ").append(s.gloss());
-        if (!s.tags().isEmpty()) {
-          sb.append(" [").append(String.join(", ", s.tags())).append("]");
+  private boolean exists(String sql, String param, String op) {
+    synchronized (lock) {
+      if (conn == null) return false;
+      try (PreparedStatement ps = conn.prepareStatement(sql)) {
+        ps.setString(1, param);
+        try (ResultSet rs = ps.executeQuery()) {
+          return rs.next();
         }
+      } catch (SQLException e) {
+        log.debug("{} lookup failed for '{}': {}", op, param, e.getMessage());
+        return false;
       }
     }
-    return sb.length() == 0 ? NO_DEF : sb.toString();
   }
 
-  /** Truncate a string to the given maximum length, appending an ellipsis character if truncated */
-  private static String truncate(String s, int max) {
-    if (s == null || s.length() <= max) return s;
-    return s.substring(0, Math.max(0, max - 1)) + "…";
+  /** 
+   * Execute a single-column string query and return the first result or null.
+   * 
+   * @param sql SQL query with one parameter
+   * @param param parameter value
+   * @param op operation name for logging
+   * @return query result string or null
+   */
+  private String queryString(String sql, String param, String op) {
+    synchronized (lock) {
+      if (conn == null) return null;
+      try (PreparedStatement ps = conn.prepareStatement(sql)) {
+        ps.setString(1, param);
+        try (ResultSet rs = ps.executeQuery()) {
+          if (rs.next()) {
+            return rs.getString(1);
+          }
+          return null;
+        }
+      } catch (SQLException e) {
+        log.debug("{} lookup failed for '{}': {}", op, param, e.getMessage());
+        return null;
+      }
+    }
+  }
+
+  /** Normalize input string by trimming and lower-casing (Locale.ROOT). */
+  private static String norm(String s) {
+    if (s == null) return null;
+    String n = s.trim().toLowerCase(Locale.ROOT);
+    return n.isEmpty() ? null : n;
+  }
+
+  /** Escape special LIKE wildcard characters in user input. */
+  private static String escapeLike(String s) {
+    return s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
   }
 }

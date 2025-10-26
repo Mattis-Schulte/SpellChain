@@ -31,9 +31,8 @@ import org.springframework.stereotype.Service;
  * - Publish real-time updates to clients
  *
  * <p>State is in-memory using concurrent maps. Per-room operations are guarded by a
- * {@link java.util.concurrent.locks.ReentrantLock} within {@link GameRoom}. Public methods
- * validate input, lock as needed, update state, take a snapshot, then publish via
- * {@link GamePublisher} after releasing the lock.
+ * ReentrantLock within GameRoom. Public methods validate input, lock as needed, 
+ * update state, take a snapshot, then publish via GamePublisher after releasing the lock.
  */
 @Service
 public class GameService {
@@ -275,7 +274,7 @@ public class GameService {
           messages.add(
               String.format(
                   "*** Player %d completed \"%s\"! (%d Point%s) *** Definition: %s",
-                  num, cand, pts, (pts != 1 ? "s" : ""), def));
+                  num, cand, pts, (pts != 1 ? "s" : ""), (def != null ? def : "No definition available.")));
         } else {
           messages.add("\"" + cand + "\" has already been used. No points this round.");
         }
