@@ -191,10 +191,10 @@ public class DictionaryService implements Dictionary {
     }
   }
 
-  /** Normalize input string by trimming and lower-casing (Locale.ROOT). */
+  /** Normalize input string by lower-casing (Locale.ROOT). */
   private static String norm(String s) {
     if (s == null) return null;
-    String n = s.trim().toLowerCase(Locale.ROOT);
+    String n = s.toLowerCase(Locale.ROOT);
     return n.isEmpty() ? null : n;
   }
 
